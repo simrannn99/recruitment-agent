@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: recruitment-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-recruitment_db}
+      POSTGRES_USER: ${DB_USER:-recruitment_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-recruitment_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-recruitment_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - recruitment-network
+
+  fastapi-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: recruitment-fastapi
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Configuration
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+    command: fastapi
+    volumes:
+      - ./app:/app/app
+    networks:
+      - recruitment-network
+    restart: unless-stopped
+
+  django-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: recruitment-django
+    ports:
+      - "8001:8001"
+    environment:
+      # Database Configuration
+      DB_NAME: ${DB_NAME:-recruitment_db}
+      DB_USER: ${DB_USER:-recruitment_user}
+      DB_PASSWORD: ${DB_PASSWORD:-recruitment_pass}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      # AI Service Configuration
+      AI_SERVICE_URL: http://fastapi-service:8000/analyze
+      AI_SERVICE_TIMEOUT: 120
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fastapi-service:
+        condition: service_started
+    command: django
+    volumes:
+      - ./recruitment:/app/recruitment
+      - ./recruitment_backend:/app/recruitment_backend
+      - ./media:/app/media
+    networks:
+      - recruitment-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  recruitment-network:
+    driver: bridge
