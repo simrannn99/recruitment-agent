@@ -12,3 +12,6 @@ openai==1.6.1
 django>=5.0
 djangorestframework>=3.14
 requests>=2.31.0
+
+# PDF Processing
+pypdf>=6.0.0
