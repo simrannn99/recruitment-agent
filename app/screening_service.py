@@ -9,47 +9,49 @@ from app.models import ScreeningResponse
 
 class ResumeScreeningService:
     """Service for analyzing resumes against job descriptions using LLM."""
-    
+
     def __init__(self):
         """Initialize the screening service with LLM and prompt template."""
         # Get LLM provider from environment (default to ollama)
         llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
-        
+
         # Initialize the LLM based on provider
         if llm_provider == "ollama":
             ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
-            
+
             self.llm = ChatOllama(
                 model=ollama_model,
                 base_url=ollama_base_url,
                 temperature=0.3,
-                format="json"  # Force JSON output
+                format="json",  # Force JSON output
             )
             print(f"✓ Using Ollama locally with model: {ollama_model}")
             self.use_ollama = True
-            
+
         elif llm_provider == "openai":
             openai_api_key = os.getenv("OPENAI_API_KEY")
             if not openai_api_key:
-                raise ValueError("OPENAI_API_KEY environment variable is required when using OpenAI provider")
-            
+                raise ValueError(
+                    "OPENAI_API_KEY environment variable is required when using OpenAI provider"
+                )
+
             openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            
+
             self.llm = ChatOpenAI(
-                model=openai_model,
-                temperature=0.3,
-                openai_api_key=openai_api_key
+                model=openai_model, temperature=0.3, openai_api_key=openai_api_key
             )
             print(f"✓ Using OpenAI with model: {openai_model}")
             self.use_ollama = False
-            
+
         else:
-            raise ValueError(f"Unsupported LLM provider: {llm_provider}. Use 'ollama' or 'openai'")
-        
+            raise ValueError(
+                f"Unsupported LLM provider: {llm_provider}. Use 'ollama' or 'openai'"
+            )
+
         # Initialize the output parser
         self.parser = PydanticOutputParser(pydantic_object=ScreeningResponse)
-        
+
         # Create the prompt template with explicit JSON formatting
         self.prompt_template = PromptTemplate(
             template="""You are a Senior Tech Recruiter with extensive experience in evaluating candidates.
@@ -79,35 +81,36 @@ Requirements:
 
 IMPORTANT: Return ONLY valid JSON. No additional text, explanations, or markdown formatting.
 """,
-            input_variables=["job_description", "resume_text"]
+            input_variables=["job_description", "resume_text"],
         )
-        
+
         # Create the chain
         self.chain = self.prompt_template | self.llm
-    
-    async def analyze(self, job_description: str, resume_text: str) -> ScreeningResponse:
+
+    async def analyze(
+        self, job_description: str, resume_text: str
+    ) -> ScreeningResponse:
         """
         Analyze a resume against a job description.
-        
+
         Args:
             job_description: The job description text
             resume_text: The resume/CV text
-            
+
         Returns:
             ScreeningResponse with structured evaluation
         """
         # Get the raw response
-        result = await self.chain.ainvoke({
-            "job_description": job_description,
-            "resume_text": resume_text
-        })
-        
+        result = await self.chain.ainvoke(
+            {"job_description": job_description, "resume_text": resume_text}
+        )
+
         # Extract content based on response type
-        if hasattr(result, 'content'):
+        if hasattr(result, "content"):
             content = result.content
         else:
             content = str(result)
-        
+
         # Parse JSON response
         try:
             # Clean the response (remove markdown code blocks if present)
@@ -119,15 +122,16 @@ IMPORTANT: Return ONLY valid JSON. No additional text, explanations, or markdown
             if content.endswith("```"):
                 content = content[:-3]
             content = content.strip()
-            
+
             # Parse JSON
             data = json.loads(content)
-            
+
             # Validate and create response
             return ScreeningResponse(**data)
-            
+
         except json.JSONDecodeError as e:
             raise ValueError(f"Failed to parse JSON response: {e}\nResponse: {content}")
         except Exception as e:
-            raise ValueError(f"Failed to create ScreeningResponse: {e}\nData: {data if 'data' in locals() else content}")
-
+            raise ValueError(
+                f"Failed to create ScreeningResponse: {e}\nData: {data if 'data' in locals() else content}"
+            )

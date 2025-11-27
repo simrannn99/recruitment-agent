@@ -14,7 +14,7 @@ load_dotenv()
 app = FastAPI(
     title="AI Resume Screening Service",
     description="Analyze resumes against job descriptions using LLM",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Add CORS middleware
@@ -36,7 +36,7 @@ async def root():
     return {
         "status": "healthy",
         "service": "AI Resume Screening Service",
-        "version": "1.0.0"
+        "version": "1.0.0",
     }
 
 
@@ -44,10 +44,10 @@ async def root():
 async def analyze_resume(request: ScreeningRequest) -> ScreeningResponse:
     """
     Analyze a resume against a job description.
-    
+
     Args:
         request: ScreeningRequest containing job_description and resume_text
-        
+
     Returns:
         ScreeningResponse with structured evaluation including:
         - match_score: 0-100 score
@@ -57,17 +57,14 @@ async def analyze_resume(request: ScreeningRequest) -> ScreeningResponse:
     """
     try:
         result = await screening_service.analyze(
-            job_description=request.job_description,
-            resume_text=request.resume_text
+            job_description=request.job_description, resume_text=request.resume_text
         )
         return result
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error analyzing resume: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error analyzing resume: {str(e)}")
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

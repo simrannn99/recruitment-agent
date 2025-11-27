@@ -62,37 +62,34 @@ B.S. Computer Science, University of Technology, 2017
 def test_analyze_endpoint():
     """Test the /analyze endpoint."""
     url = "http://localhost:8001/analyze"
-    
-    payload = {
-        "job_description": JOB_DESCRIPTION,
-        "resume_text": RESUME_TEXT
-    }
-    
+
+    payload = {"job_description": JOB_DESCRIPTION, "resume_text": RESUME_TEXT}
+
     print("Sending request to API...")
     print("-" * 80)
-    
+
     try:
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        
+
         result = response.json()
-        
+
         print("\n✅ API Response:")
         print("=" * 80)
         print(f"\n📊 Match Score: {result['match_score']}/100")
         print(f"\n📝 Summary:\n{result['summary']}")
         print(f"\n❌ Missing Skills:")
-        for skill in result['missing_skills']:
+        for skill in result["missing_skills"]:
             print(f"  - {skill}")
         print(f"\n💬 Interview Questions:")
-        for i, question in enumerate(result['interview_questions'], 1):
+        for i, question in enumerate(result["interview_questions"], 1):
             print(f"  {i}. {question}")
         print("\n" + "=" * 80)
-        
+
         # Pretty print the full JSON response
         print("\n📄 Full JSON Response:")
         print(json.dumps(result, indent=2))
-        
+
     except requests.exceptions.ConnectionError:
         print("❌ Error: Could not connect to the API.")
         print("Make sure the server is running: uvicorn app.main:app --reload")
