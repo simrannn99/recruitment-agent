@@ -3,30 +3,26 @@ import json
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
-from app.models import ScreeningResponse
+from langchain_core.output_parsers import PydanticOutputParser
+from app.models import ScreeningRequest, ScreeningResponse
+from app.prompts import RESUME_SCREENING_PROMPT
 
 
 class ResumeScreeningService:
-    """Service for analyzing resumes against job descriptions using LLM."""
+    """Service for screening resumes using LLM."""
 
     def __init__(self):
-        """Initialize the screening service with LLM and prompt template."""
-        # Get LLM provider from environment (default to ollama)
+        """Initialize the screening service with LLM."""
         llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
 
-        # Initialize the LLM based on provider
         if llm_provider == "ollama":
             ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
 
             self.llm = ChatOllama(
-                model=ollama_model,
-                base_url=ollama_base_url,
-                temperature=0.3,
-                format="json",  # Force JSON output
+                model=ollama_model, base_url=ollama_base_url, format="json"
             )
-            print(f"✓ Using Ollama locally with model: {ollama_model}")
+            print(f"✓ Using Ollama with model: {ollama_model}")
             self.use_ollama = True
 
         elif llm_provider == "openai":
@@ -52,35 +48,9 @@ class ResumeScreeningService:
         # Initialize the output parser
         self.parser = PydanticOutputParser(pydantic_object=ScreeningResponse)
 
-        # Create the prompt template with explicit JSON formatting
+        # Create the prompt template from imported prompt
         self.prompt_template = PromptTemplate(
-            template="""You are a Senior Tech Recruiter with extensive experience in evaluating candidates.
-
-Your task is to analyze the following resume against the job description and provide a structured evaluation.
-
-Job Description:
-{job_description}
-
-Resume:
-{resume_text}
-
-Please analyze the resume and provide your response in the following JSON format ONLY. Do not include any text before or after the JSON:
-
-{{
-  "match_score": <number between 0-100>,
-  "summary": "<brief 2-sentence summary of candidate fit>",
-  "missing_skills": ["<skill1>", "<skill2>", ...],
-  "interview_questions": ["<question1>", "<question2>", "<question3>"]
-}}
-
-Requirements:
-1. match_score: A number from 0 to 100 indicating how well the candidate fits the role
-2. summary: Maximum 2 sentences describing the candidate's fit
-3. missing_skills: List of key skills from the job description that are missing from the resume
-4. interview_questions: Exactly 3 specific, role-relevant questions to assess the candidate
-
-IMPORTANT: Return ONLY valid JSON. No additional text, explanations, or markdown formatting.
-""",
+            template=RESUME_SCREENING_PROMPT,
             input_variables=["job_description", "resume_text"],
         )
 
