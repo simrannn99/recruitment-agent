@@ -9,9 +9,6 @@ from app.screening_service import ResumeScreeningService
 # Load environment variables
 load_dotenv()
 
-# Verify API key is set
-if not os.getenv("OPENAI_API_KEY"):
-    raise ValueError("OPENAI_API_KEY environment variable is not set")
 
 # Initialize FastAPI app
 app = FastAPI(
