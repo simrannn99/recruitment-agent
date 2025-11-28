@@ -166,6 +166,44 @@ CELERY_RESULT_PERSISTENT = True  # Survive Redis restarts
 CELERY_TASK_ACKS_LATE = True  # Acknowledge after completion
 CELERY_TASK_REJECT_ON_WORKER_LOST = True  # Requeue if worker dies
 
+# Priority-Based Queue Configuration
+from kombu import Queue
+
+CELERY_TASK_QUEUES = (
+    Queue('high_priority', routing_key='high_priority', priority=10),
+    Queue('medium_priority', routing_key='medium_priority', priority=5),
+    Queue('low_priority', routing_key='low_priority', priority=1),
+)
+
+# Task routing - assign tasks to specific queues
+CELERY_TASK_ROUTES = {
+    # High priority: Emails (fast, user-facing)
+    'recruitment.tasks.send_application_status_email': {
+        'queue': 'high_priority',
+        'routing_key': 'high_priority',
+    },
+    
+    # Medium priority: AI analysis (important but slow)
+    'recruitment.tasks.analyze_application_async': {
+        'queue': 'medium_priority',
+        'routing_key': 'medium_priority',
+    },
+    'recruitment.tasks.batch_analyze_applications': {
+        'queue': 'medium_priority',
+        'routing_key': 'medium_priority',
+    },
+    
+    # Low priority: Maintenance tasks (can wait)
+    'recruitment.tasks.cleanup_old_results': {
+        'queue': 'low_priority',
+        'routing_key': 'low_priority',
+    },
+}
+
+# Default queue for unrouted tasks
+CELERY_TASK_DEFAULT_QUEUE = 'medium_priority'
+CELERY_TASK_DEFAULT_ROUTING_KEY = 'medium_priority'
+
 # Monitoring (for Flower)
 CELERY_WORKER_SEND_TASK_EVENTS = True
 CELERY_TASK_SEND_SENT_EVENT = True

@@ -38,11 +38,11 @@ timeout /t 2 /nobreak >nul
 echo      FastAPI started!
 echo.
 
-REM Start Celery Worker
-echo [5/5] Starting Celery Worker...
-start "Celery Worker" cmd /k "cd /d %~dp0 && venv\Scripts\activate && celery -A recruitment_backend worker -l info --pool=solo"
+REM Start Celery Worker (with priority queues)
+echo [5/5] Starting Celery Worker (priority queues: high, medium, low)...
+start "Celery Worker" cmd /k "cd /d %~dp0 && venv\Scripts\activate && celery -A recruitment_backend worker -Q high_priority,medium_priority,low_priority -l info --pool=solo"
 timeout /t 2 /nobreak >nul
-echo      Celery Worker started!
+echo      Celery Worker started with priority queues!
 echo.
 
 REM Start Flower (optional)

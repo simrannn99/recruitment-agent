@@ -144,7 +144,7 @@ services:
         condition: service_healthy
       fastapi-service:
         condition: service_started
-    command: celery -A recruitment_backend worker -l info
+    command: celery -A recruitment_backend worker -Q high_priority,medium_priority,low_priority -l info
     volumes:
       - ./recruitment:/app/recruitment
       - ./recruitment_backend:/app/recruitment_backend
