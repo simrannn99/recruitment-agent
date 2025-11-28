@@ -143,6 +143,37 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8000/analyze")
 AI_SERVICE_TIMEOUT = 120  # 2 minutes
 
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'amqp://guest:guest@localhost:5672//')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+
+# Task serialization (use JSON for security)
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TIMEZONE = 'UTC'
+
+# Task execution settings
+CELERY_TASK_TRACK_STARTED = True  # Track when tasks start
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes (hard limit)
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes (soft limit)
+
+# Result backend settings
+CELERY_RESULT_EXPIRES = 3600  # Results expire after 1 hour
+CELERY_RESULT_PERSISTENT = True  # Survive Redis restarts
+
+# Task retry configuration
+CELERY_TASK_ACKS_LATE = True  # Acknowledge after completion
+CELERY_TASK_REJECT_ON_WORKER_LOST = True  # Requeue if worker dies
+
+# Monitoring (for Flower)
+CELERY_WORKER_SEND_TASK_EVENTS = True
+CELERY_TASK_SEND_SENT_EVENT = True
+
+# Email Configuration
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@recruitment.com')
+
 # Logging Configuration
 LOGGING = {
     'version': 1,
