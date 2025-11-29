@@ -6,17 +6,25 @@ from recruitment.models import JobPosting, Candidate, Application
 @admin.register(JobPosting)
 class JobPostingAdmin(admin.ModelAdmin):
     """Admin interface for JobPosting model."""
-    list_display = ['title', 'created_at', 'application_count']
-    list_filter = ['created_at']
+    list_display = ['title', 'created_at', 'application_count', 'embedding_status']
+    list_filter = ['created_at', 'embedding_generated_at']
     search_fields = ['title', 'description']
-    readonly_fields = ['created_at']
-    actions = ['batch_analyze_job_applications']
+    readonly_fields = ['created_at', 'embedding_generated_at']
+    actions = ['batch_analyze_job_applications', 'find_matching_candidates', 'regenerate_embeddings']
     
     def application_count(self, obj):
         """Display number of applications for this job."""
         count = obj.applications.count()
         return format_html('<strong>{}</strong>', count)
     application_count.short_description = 'Applications'
+    
+    def embedding_status(self, obj):
+        """Display embedding generation status."""
+        if obj.has_embedding:
+            return format_html('<span style="color: green;">✓ Generated</span>')
+        else:
+            return format_html('<span style="color: orange;">⚠ Pending</span>')
+    embedding_status.short_description = 'Embedding'
     
     def batch_analyze_job_applications(self, request, queryset):
         """Admin action to batch analyze all pending applications for selected jobs."""
@@ -32,21 +40,110 @@ class JobPostingAdmin(admin.ModelAdmin):
             f"Queued batch analysis for {count} job(s). Check Flower for progress."
         )
     batch_analyze_job_applications.short_description = "Batch analyze all pending applications"
+    
+    def find_matching_candidates(self, request, queryset):
+        """Admin action to find matching candidates for selected jobs."""
+        if queryset.count() != 1:
+            self.message_user(request, "Please select exactly one job posting.", level='WARNING')
+            return
+        
+        job = queryset.first()
+        if not job.has_embedding:
+            self.message_user(request, f"Job '{job.title}' does not have an embedding yet. Please wait.", level='WARNING')
+            return
+        
+        # Import here to avoid circular imports
+        from recruitment.views.search_views import _vector_search_candidates
+        
+        results = _vector_search_candidates(job.description_embedding, limit=20, similarity_threshold=0.5)
+        
+        if results:
+            message = f"Top {len(results)} matching candidates for '{job.title}':\n"
+            for i, candidate in enumerate(results[:5], 1):
+                message += f"{i}. {candidate['name']} ({candidate['email']}) - {candidate['similarity_score']:.2%} match\n"
+            if len(results) > 5:
+                message += f"... and {len(results) - 5} more"
+            self.message_user(request, message)
+        else:
+            self.message_user(request, f"No matching candidates found for '{job.title}'.", level='WARNING')
+    find_matching_candidates.short_description = "Find matching candidates for job"
+    
+    def regenerate_embeddings(self, request, queryset):
+        """Admin action to regenerate embeddings for selected jobs."""
+        from recruitment.tasks import generate_job_embedding_async
+        
+        count = 0
+        for job in queryset:
+            generate_job_embedding_async.delay(job.id)
+            count += 1
+        
+        self.message_user(request, f"Queued embedding generation for {count} job(s).")
+    regenerate_embeddings.short_description = "Regenerate embeddings"
 
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
     """Admin interface for Candidate model."""
-    list_display = ['name', 'email', 'created_at', 'application_count']
-    list_filter = ['created_at']
+    list_display = ['name', 'email', 'created_at', 'application_count', 'embedding_status']
+    list_filter = ['created_at', 'embedding_generated_at']
     search_fields = ['name', 'email']
-    readonly_fields = ['created_at']
+    readonly_fields = ['created_at', 'embedding_generated_at', 'resume_text_cache']
+    actions = ['find_similar_candidates', 'regenerate_embeddings']
     
     def application_count(self, obj):
         """Display number of applications by this candidate."""
         count = obj.applications.count()
         return format_html('<strong>{}</strong>', count)
     application_count.short_description = 'Applications'
+    
+    def embedding_status(self, obj):
+        """Display embedding generation status."""
+        if obj.has_embedding:
+            return format_html('<span style="color: green;">✓ Generated</span>')
+        else:
+            return format_html('<span style="color: orange;">⚠ Pending</span>')
+    embedding_status.short_description = 'Embedding'
+    
+    def find_similar_candidates(self, request, queryset):
+        """Admin action to find similar candidates."""
+        if queryset.count() != 1:
+            self.message_user(request, "Please select exactly one candidate.", level='WARNING')
+            return
+        
+        candidate = queryset.first()
+        if not candidate.has_embedding:
+            self.message_user(request, f"Candidate '{candidate.name}' does not have an embedding yet. Please wait.", level='WARNING')
+            return
+        
+        # Import here to avoid circular imports
+        from recruitment.views.search_views import _vector_search_candidates
+        
+        all_results = _vector_search_candidates(candidate.resume_embedding, limit=11, similarity_threshold=0.5)
+        # Filter out the candidate itself
+        results = [r for r in all_results if r['id'] != candidate.id][:10]
+        
+        if results:
+            message = f"Top {len(results)} similar candidates to '{candidate.name}':\n"
+            for i, similar in enumerate(results[:5], 1):
+                message += f"{i}. {similar['name']} ({similar['email']}) - {similar['similarity_score']:.2%} similar\n"
+            if len(results) > 5:
+                message += f"... and {len(results) - 5} more"
+            self.message_user(request, message)
+        else:
+            self.message_user(request, f"No similar candidates found for '{candidate.name}'.", level='WARNING')
+    find_similar_candidates.short_description = "Find similar candidates"
+    
+    def regenerate_embeddings(self, request, queryset):
+        """Admin action to regenerate embeddings for selected candidates."""
+        from recruitment.tasks import generate_candidate_embedding_async
+        
+        count = 0
+        for candidate in queryset:
+            generate_candidate_embedding_async.delay(candidate.id)
+            count += 1
+        
+        self.message_user(request, f"Queued embedding generation for {count} candidate(s).")
+    regenerate_embeddings.short_description = "Regenerate embeddings"
 
 
 @admin.register(Application)

@@ -19,10 +19,18 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 
+from recruitment.views import search_views
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    
+    # Vector Search API Endpoints
+    path("api/search/candidates/", search_views.search_candidates_for_job, name="search_candidates"),
+    path("api/search/jobs/", search_views.search_jobs_for_candidate, name="search_jobs"),
+    path("api/search/similar-candidates/", search_views.search_similar_candidates, name="search_similar_candidates"),
 ]
 
 # Serve media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

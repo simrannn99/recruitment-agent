@@ -46,6 +46,16 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'   Jobs: {len(jobs)}'))
         self.stdout.write(self.style.SUCCESS(f'   Candidates: {len(candidates)}'))
         self.stdout.write(self.style.SUCCESS(f'   Applications: {len(applications)}'))
+        
+        # Show embedding generation status
+        self.stdout.write(self.style.SUCCESS('\n📊 Vector Search Status:'))
+        self.stdout.write(self.style.WARNING('   Embedding generation tasks queued in Celery'))
+        self.stdout.write(self.style.WARNING('   Monitor progress at: http://localhost:5555'))
+        self.stdout.write(self.style.SUCCESS('\n💡 Next Steps:'))
+        self.stdout.write('   1. Wait 10-20 seconds for embeddings to generate')
+        self.stdout.write('   2. Check status: python manage.py generate_embeddings --stats')
+        self.stdout.write('   3. Test search: python scripts\\test_vector_search.py')
+        self.stdout.write('   4. Try API: POST http://localhost:8001/api/search/candidates/')
 
     def create_job_postings(self):
         """Create sample job postings."""
@@ -351,10 +361,11 @@ BS Computer Engineering, Purdue University'''
 
         candidates = []
         for candidate_data in candidates_data:
-            # Create candidate without resume file for simplicity
+            # Create candidate with resume_text_cache for embedding generation
             candidate = Candidate.objects.create(
                 name=candidate_data['name'],
-                email=candidate_data['email']
+                email=candidate_data['email'],
+                resume_text_cache=candidate_data['resume_text']  # Save resume text for embeddings
             )
             candidates.append(candidate)
 
