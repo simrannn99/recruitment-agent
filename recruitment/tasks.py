@@ -32,8 +32,17 @@ def analyze_application_async(self, application_id):
     Raises:
         Retry: If analysis fails, retry up to 3 times with 60-second delay
     """
+    from recruitment.utils.websocket_utils import send_task_update
+    
     try:
         logger.info(f"[Task {self.request.id}] Starting AI analysis for application {application_id}")
+        
+        # Send WebSocket notification: task started
+        send_task_update(
+            task_id=self.request.id,
+            status='started',
+            result={'application_id': application_id, 'type': 'ai_analysis'}
+        )
         
         # Import here to avoid circular imports
         from recruitment.services.ai_analyzer import analyze_application
@@ -42,10 +51,30 @@ def analyze_application_async(self, application_id):
         result = analyze_application(application_id)
         
         logger.info(f"[Task {self.request.id}] Completed AI analysis for application {application_id}")
+        
+        # Send WebSocket notification: task completed
+        send_task_update(
+            task_id=self.request.id,
+            status='completed',
+            result={
+                'application_id': application_id,
+                'type': 'ai_analysis',
+                'ai_score': result.get('ai_score'),
+                'summary': result.get('summary')
+            }
+        )
+        
         return result
         
     except Exception as e:
         logger.error(f"[Task {self.request.id}] Error analyzing application {application_id}: {str(e)}")
+        
+        # Send WebSocket notification: task failed
+        send_task_update(
+            task_id=self.request.id,
+            status='failed',
+            error=str(e)
+        )
         
         # Retry with exponential backoff
         # 1st retry: 60s, 2nd retry: 120s, 3rd retry: 180s
@@ -226,6 +255,8 @@ def generate_candidate_embedding_async(self, candidate_id):
     Returns:
         dict: Result with embedding status
     """
+    from recruitment.utils.websocket_utils import send_task_update
+    
     try:
         from recruitment.models import Candidate
         from recruitment.services.embedding_service import EmbeddingService
@@ -233,6 +264,13 @@ def generate_candidate_embedding_async(self, candidate_id):
         from django.utils import timezone
         
         logger.info(f"[Task {self.request.id}] Generating embedding for candidate {candidate_id}")
+        
+        # Send WebSocket notification: task started
+        send_task_update(
+            task_id=self.request.id,
+            status='started',
+            result={'candidate_id': candidate_id, 'type': 'embedding_generation'}
+        )
         
         # Fetch candidate
         candidate = Candidate.objects.get(id=candidate_id)
@@ -246,6 +284,11 @@ def generate_candidate_embedding_async(self, candidate_id):
         
         if not resume_text or not resume_text.strip():
             logger.warning(f"No text extracted from resume for candidate {candidate_id}")
+            send_task_update(
+                task_id=self.request.id,
+                status='failed',
+                error='No text extracted from resume'
+            )
             return {'status': 'failed', 'reason': 'No text extracted'}
         
         # Generate embedding
@@ -258,17 +301,40 @@ def generate_candidate_embedding_async(self, candidate_id):
             candidate.save(update_fields=['resume_text_cache', 'resume_embedding', 'embedding_generated_at'])
             
             logger.info(f"[Task {self.request.id}] Successfully generated embedding for candidate {candidate_id}")
-            return {
+            
+            result = {
                 'status': 'success',
                 'candidate_id': candidate_id,
                 'embedding_dimension': len(embedding)
             }
+            
+            # Send WebSocket notification: task completed
+            send_task_update(
+                task_id=self.request.id,
+                status='completed',
+                result=result
+            )
+            
+            return result
         else:
             logger.error(f"Failed to generate embedding for candidate {candidate_id}")
+            send_task_update(
+                task_id=self.request.id,
+                status='failed',
+                error='Embedding generation returned None'
+            )
             return {'status': 'failed', 'reason': 'Embedding generation returned None'}
             
     except Exception as e:
         logger.error(f"[Task {self.request.id}] Error generating embedding for candidate {candidate_id}: {str(e)}")
+        
+        # Send WebSocket notification: task failed
+        send_task_update(
+            task_id=self.request.id,
+            status='failed',
+            error=str(e)
+        )
+        
         countdown = 60 * (self.request.retries + 1)
         raise self.retry(exc=e, countdown=countdown)
 

@@ -19,10 +19,13 @@ from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 
-from recruitment.views import search_views
+from recruitment.views import search_views, websocket_views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    
+    # WebSocket Test Page
+    path("ws-test/", websocket_views.websocket_test, name="websocket_test"),
     
     # Vector Search API Endpoints
     path("api/search/candidates/", search_views.search_candidates_for_job, name="search_candidates"),
@@ -30,7 +33,9 @@ urlpatterns = [
     path("api/search/similar-candidates/", search_views.search_similar_candidates, name="search_similar_candidates"),
 ]
 
-# Serve media files in development
+# Serve media and static files in development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
 

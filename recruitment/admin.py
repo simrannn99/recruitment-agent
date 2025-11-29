@@ -581,3 +581,33 @@ class ApplicationAdmin(admin.ModelAdmin):
             f"Queued {count} rejection email(s)."
         )
     send_rejection_emails.short_description = "Send rejection emails"
+    
+    def response_add(self, request, obj, post_url_override=None):
+        """Override response_add to store task ID for WebSocket monitoring."""
+        from django.contrib import messages
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        
+        # Get the default response
+        response = super().response_add(request, obj, post_url_override)
+        
+        # If application was just created and has a task ID, add it to messages
+        if hasattr(obj, '_analysis_task_id'):
+            task_id = obj._analysis_task_id
+            
+            # Add a custom message with the task ID embedded
+            messages.success(
+                request,
+                f'Application created successfully. AI analysis in progress (Task ID: {task_id})',
+                extra_tags=f'task_id:{task_id}'
+            )
+            
+            # If redirecting to changelist, add task ID as URL parameter
+            if isinstance(response, HttpResponseRedirect):
+                changelist_url = reverse('admin:recruitment_application_changelist')
+                if response.url == changelist_url or response.url == '.':
+                    # Redirect to changelist with task ID in URL fragment
+                    return HttpResponseRedirect(f"{changelist_url}#task={task_id}")
+        
+        return response
+

@@ -26,9 +26,9 @@ This will:
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-**Terminal 2 - Django:**
+**Terminal 2 - Django (with WebSocket support):**
 ```bash
-python manage.py runserver 8001
+daphne -b 0.0.0.0 -p 8001 recruitment_backend.asgi:application
 ```
 
 ## Step 3: (Optional) Start Celery for Background Jobs
@@ -63,6 +63,7 @@ docker-compose -f docker-compose.local.yml ps
 
 # Access services:
 # - Django Admin: http://localhost:8001/admin
+# - WebSocket Test: http://localhost:8001/ws-test
 # - FastAPI Docs: http://localhost:8000/docs
 # - RabbitMQ UI: http://localhost:15672 (guest/guest)
 # - Flower: http://localhost:5555

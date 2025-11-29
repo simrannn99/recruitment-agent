@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Third-party apps
     "rest_framework",
+    "channels",  # WebSocket support
     # Local apps
     "recruitment.apps.RecruitmentConfig",
 ]
@@ -63,7 +64,7 @@ ROOT_URLCONF = "recruitment_backend.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "recruitment" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -76,6 +77,24 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "recruitment_backend.wsgi.application"
+
+# ASGI Application (for WebSocket support)
+ASGI_APPLICATION = "recruitment_backend.asgi.application"
+
+# Channel Layers Configuration (using Redis)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [(
+                os.getenv("REDIS_HOST", "localhost"),
+                int(os.getenv("REDIS_PORT", "6379"))
+            )],
+            "capacity": 1500,  # Maximum messages per channel
+            "expiry": 10,  # Message expiry in seconds
+        },
+    },
+}
 
 
 # Database

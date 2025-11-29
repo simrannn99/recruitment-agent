@@ -4,7 +4,7 @@ REM This script starts all services needed for local development
 
 echo ============================================================
 echo   Recruitment Platform - Local Development Startup
-echo   WITH VECTOR SEARCH SEMANTIC MATCHING
+echo   WITH VECTOR SEARCH + WEBSOCKET REAL-TIME UPDATES
 echo ============================================================
 echo.
 
@@ -25,11 +25,11 @@ timeout /t 5 /nobreak >nul
 echo      Services ready!
 echo.
 
-REM Activate virtual environment and start Django
-echo [3/5] Starting Django on port 8001...
-start "Django Backend" cmd /k "cd /d %~dp0 && venv\Scripts\activate && python manage.py runserver 8001"
+REM Activate virtual environment and start Django with Daphne (WebSocket support)
+echo [3/5] Starting Django with Daphne (WebSocket support) on port 8001...
+start "Django Backend (Daphne)" cmd /k "cd /d %~dp0 && venv\Scripts\activate && daphne -b 0.0.0.0 -p 8001 recruitment_backend.asgi:application"
 timeout /t 2 /nobreak >nul
-echo      Django started!
+echo      Django started with WebSocket support!
 echo.
 
 REM Start FastAPI
@@ -63,6 +63,7 @@ echo ============================================================
 echo.
 echo   Core Services:
 echo   - Django Admin:      http://localhost:8001/admin
+echo   - WebSocket Test:    http://localhost:8001/ws-test
 echo   - FastAPI Docs:      http://localhost:8000/docs
 echo   - Flower Dashboard:  http://localhost:5555
 echo   - RabbitMQ UI:       http://localhost:15672 (guest/guest)
@@ -77,6 +78,7 @@ echo   1. Run migrations:        python manage.py migrate
 echo   2. Generate embeddings:   python manage.py generate_embeddings --all
 echo   3. Check status:          python manage.py generate_embeddings --stats
 echo   4. Run tests:             python scripts\test_vector_search.py
+echo   5. Test WebSockets:       Open http://localhost:8001/ws-test
 echo.
 echo   Press any key to view service status...
 pause >nul
@@ -91,4 +93,3 @@ echo   To stop all services, run: stop_all.bat
 echo ============================================================
 echo.
 pause
-

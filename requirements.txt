@@ -28,3 +28,8 @@ flower>=2.0.0
 pgvector>=0.2.5
 sentence-transformers>=2.2.0
 numpy>=1.24.0
+
+# WebSocket Support
+channels>=4.0.0
+channels-redis>=4.1.0
+daphne>=4.0.0

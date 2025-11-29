@@ -49,8 +49,8 @@ if [ "$1" = "django" ]; then
     collect_static
     create_superuser
     
-    echo "🌐 Starting Django development server..."
-    exec python manage.py runserver 0.0.0.0:8001
+    echo "🌐 Starting Daphne ASGI server (WebSocket support)..."
+    exec daphne -b 0.0.0.0 -p 8001 recruitment_backend.asgi:application
 
 elif [ "$1" = "fastapi" ]; then
     echo "⚡ Starting FastAPI Service..."

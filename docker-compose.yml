@@ -55,6 +55,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-recruitment_pass}
       DB_HOST: postgres
       DB_PORT: 5432
+      # Redis Configuration (for WebSocket channel layer)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       # AI Service Configuration
       AI_SERVICE_URL: http://fastapi-service:8000/analyze
       AI_SERVICE_TIMEOUT: 120

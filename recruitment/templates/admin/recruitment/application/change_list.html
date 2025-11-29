@@ -1,0 +1,205 @@
+{% extends "admin/change_list.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    @keyframes slideIn {
+        from {
+            transform: translateX(400px);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideOut {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        to {
+            transform: translateX(400px);
+            opacity: 0;
+        }
+    }
+
+    .ws-notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 9999;
+        font-size: 14px;
+        max-width: 350px;
+        animation: slideIn 0.3s ease;
+    }
+
+    .ws-notification.success {
+        background: #28a745;
+    }
+
+    .ws-notification.error {
+        background: #dc3545;
+    }
+
+    .ws-notification.info {
+        background: #17a2b8;
+    }
+</style>
+
+<script>
+    // WebSocket-based auto-refresh for Applications admin
+    (function () {
+        if (!window.location.pathname.includes('/application/')) {
+            return;
+        }
+
+        let wsConnections = new Map();
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function showNotification(message, type = 'info') {
+            const banner = document.createElement('div');
+            banner.className = `ws-notification ${type}`;
+            banner.textContent = message;
+            document.body.appendChild(banner);
+
+            setTimeout(() => {
+                banner.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => banner.remove(), 300);
+            }, 4000);
+        }
+
+        function extractTaskIds() {
+            const taskIds = [];
+
+            // Check URL fragment for task ID (e.g., #task=abc-123)
+            const hash = window.location.hash;
+            if (hash.startsWith('#task=')) {
+                const taskId = hash.substring(6);
+                if (taskId) {
+                    taskIds.push(taskId);
+                    console.log(`📌 Found task ID in URL: ${taskId}`);
+
+                    // Store in localStorage
+                    const tasks = JSON.parse(localStorage.getItem('recentAnalysisTasks') || '[]');
+                    const exists = tasks.some(t => t.taskId === taskId);
+                    if (!exists) {
+                        tasks.push({ taskId: taskId, timestamp: Date.now() });
+                        localStorage.setItem('recentAnalysisTasks', JSON.stringify(tasks));
+                    }
+
+                    // Clear hash
+                    history.replaceState(null, null, ' ');
+                }
+            }
+
+            // Check localStorage
+            const recentTasks = JSON.parse(localStorage.getItem('recentAnalysisTasks') || '[]');
+            const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+            const validTasks = recentTasks.filter(t => t.timestamp > fiveMinutesAgo);
+
+            localStorage.setItem('recentAnalysisTasks', JSON.stringify(validTasks));
+
+            validTasks.forEach(t => {
+                if (!taskIds.includes(t.taskId)) {
+                    taskIds.push(t.taskId);
+                }
+            });
+
+            return taskIds;
+        }
+
+        function connectToTask(taskId) {
+            if (wsConnections.has(taskId)) {
+                return;
+            }
+
+            const ws = new WebSocket(`ws://${window.location.host}/ws/tasks/${taskId}/`);
+            wsConnections.set(taskId, ws);
+
+            ws.onopen = () => {
+                console.log(`✅ WebSocket connected to task ${taskId}`);
+                reconnectAttempts = 0;
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('📨 Task update received:', data);
+
+                if (data.type === 'task_update') {
+                    if (data.status === 'completed') {
+                        showNotification('✅ AI Analysis completed! Refreshing page...', 'success');
+                        setTimeout(() => window.location.reload(), 1500);
+                    } else if (data.status === 'failed') {
+                        showNotification('❌ Analysis failed. Refreshing...', 'error');
+                        setTimeout(() => window.location.reload(), 2000);
+                    } else if (data.status === 'started') {
+                        showNotification('🔄 AI Analysis started...', 'info');
+                    }
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error(`WebSocket error for task ${taskId}:`, error);
+            };
+
+            ws.onclose = (event) => {
+                console.log(`WebSocket closed for task ${taskId}`);
+                wsConnections.delete(taskId);
+
+                if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
+                    setTimeout(() => connectToTask(taskId), delay);
+                }
+            };
+        }
+
+        function monitorPendingApplications() {
+            const taskIds = extractTaskIds();
+
+            if (taskIds.length > 0) {
+                console.log(`🔌 Monitoring ${taskIds.length} task(s) via WebSocket`);
+                showNotification(`🔌 Monitoring ${taskIds.length} background task(s)`, 'info');
+
+                taskIds.forEach(taskId => connectToTask(taskId));
+            } else {
+                const hasUnanalyzed = Array.from(document.querySelectorAll('.field-ai_score_display'))
+                    .some(cell => cell.textContent.includes('Not analyzed'));
+
+                if (hasUnanalyzed) {
+                    console.log('⚠️ Unanalyzed applications found but no task IDs. Using fallback polling.');
+                    showNotification('🔄 Checking for updates every 15 seconds', 'info');
+                    setTimeout(() => window.location.reload(), 15000);
+                }
+            }
+        }
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'recentAnalysisTasks') {
+                monitorPendingApplications();
+            }
+        });
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', monitorPendingApplications);
+        } else {
+            monitorPendingApplications();
+        }
+
+        window.addEventListener('beforeunload', () => {
+            wsConnections.forEach(ws => ws.close(1000, 'Page unloading'));
+        });
+
+        console.log('🔌 WebSocket auto-refresh initialized for Applications');
+    })();
+</script>
+{% endblock %}

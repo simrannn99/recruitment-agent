@@ -36,9 +36,13 @@ def trigger_ai_analysis(sender, instance, created, **kwargs):
             task = analyze_application_async.delay(instance.id)
             logger.info(f"AI analysis queued for application {instance.id} (task ID: {task.id})")
             
+            # Store task ID in instance for admin access
+            instance._analysis_task_id = task.id
+            
         except Exception as e:
             logger.error(f"Failed to queue AI analysis for application {instance.id}: {str(e)}")
             # Don't raise the exception to avoid blocking the application creation
+
 
 
 @receiver(pre_save, sender=Candidate)
