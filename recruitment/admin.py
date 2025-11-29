@@ -1,16 +1,32 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.urls import reverse
 from recruitment.models import JobPosting, Candidate, Application
 
 
 @admin.register(JobPosting)
 class JobPostingAdmin(admin.ModelAdmin):
-    """Admin interface for JobPosting model."""
+    """Enhanced admin interface for JobPosting model with vector search."""
     list_display = ['title', 'created_at', 'application_count', 'embedding_status']
     list_filter = ['created_at', 'embedding_generated_at']
     search_fields = ['title', 'description']
-    readonly_fields = ['created_at', 'embedding_generated_at']
-    actions = ['batch_analyze_job_applications', 'find_matching_candidates', 'regenerate_embeddings']
+    readonly_fields = ['created_at', 'embedding_generated_at', 'matching_candidates_display']
+    exclude = ['description_embedding']  # Hide embedding vector from form
+    actions = ['batch_analyze_job_applications', 'regenerate_embeddings']
+    
+    fieldsets = (
+        ('Job Information', {
+            'fields': ('title', 'description')
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'embedding_generated_at'),
+            'classes': ('collapse',)
+        }),
+        ('🔍 AI-Powered Candidate Matching', {
+            'fields': ('matching_candidates_display',),
+            'description': 'Top candidates matching this job based on semantic similarity of skills and experience'
+        }),
+    )
     
     def application_count(self, obj):
         """Display number of applications for this job."""
@@ -25,6 +41,81 @@ class JobPostingAdmin(admin.ModelAdmin):
         else:
             return format_html('<span style="color: orange;">⚠ Pending</span>')
     embedding_status.short_description = 'Embedding'
+    
+    def matching_candidates_display(self, obj):
+        """Display top matching candidates with clickable links."""
+        if not obj.has_embedding:
+            return format_html(
+                '<div style="padding: 20px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin: 15px 0;">'
+                '<strong style="font-size: 14px;">⚠ Embedding Generation in Progress</strong><br>'
+                '<span style="color: #856404; font-size: 13px;">Please wait a few seconds for the AI to analyze this job posting, then refresh this page to see matching candidates.</span>'
+                '</div>'
+            )
+        
+        # Import here to avoid circular imports
+        from recruitment.views.search_views import _vector_search_candidates
+        
+        try:
+            results = _vector_search_candidates(obj.description_embedding, limit=10, similarity_threshold=0.4)
+            
+            if not results:
+                return format_html(
+                    '<div style="padding: 20px; background: #f8f9fa; border-left: 4px solid #6c757d; border-radius: 4px; margin: 15px 0;">'
+                    '<strong style="font-size: 14px;">No Matching Candidates Found</strong><br>'
+                    '<span style="color: #6c757d; font-size: 13px;">No candidates meet the 40% similarity threshold for this position.</span>'
+                    '</div>'
+                )
+            
+            html = '<div style="margin: 15px 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
+            html += '<table style="width: 100%; border-collapse: collapse;">'
+            html += '<thead><tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">'
+            html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Rank</th>'
+            html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Candidate Name</th>'
+            html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Email</th>'
+            html += '<th style="padding: 12px 15px; text-align: right; font-weight: 600;">Match Score</th>'
+            html += '</tr></thead><tbody>'
+            
+            for i, candidate in enumerate(results, 1):
+                candidate_url = reverse('admin:recruitment_candidate_change', args=[candidate['id']])
+                score = candidate['similarity_score']
+                
+                # Color code based on score
+                if score >= 0.7:
+                    score_color = '#fff'
+                    score_bg = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)'
+                    badge_text = 'Excellent Match'
+                elif score >= 0.5:
+                    score_color = '#000'
+                    score_bg = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                    badge_text = 'Good Match'
+                else:
+                    score_color = '#000'
+                    score_bg = 'linear-gradient(135deg, #e0e0e0 0%, #c0c0c0 100%)'
+                    badge_text = 'Potential Match'
+                
+                row_bg = '#f8f9fa' if i % 2 == 0 else '#ffffff'
+                
+                html += f'<tr style="background: {row_bg}; border-bottom: 1px solid #e9ecef; transition: background 0.2s;" onmouseover="this.style.background=\'#e3f2fd\'" onmouseout="this.style.background=\'{row_bg}\'">'
+                html += f'<td style="padding: 15px;"><strong style="color: #667eea; font-size: 16px;">#{i}</strong></td>'
+                html += f'<td style="padding: 15px;"><a href="{candidate_url}" style="text-decoration: none; color: #1976d2; font-weight: 500; font-size: 14px;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">{candidate["name"]}</a></td>'
+                html += f'<td style="padding: 15px; color: #6c757d; font-size: 13px;">{candidate["email"]}</td>'
+                html += f'<td style="padding: 15px; text-align: right;"><span style="background: {score_bg}; color: {score_color}; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 13px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.15);" title="{badge_text}">{score:.1%}</span></td>'
+                html += '</tr>'
+            
+            html += '</tbody></table></div>'
+            html += f'<div style="padding: 10px 15px; background: #f8f9fa; border-radius: 4px; margin-top: 10px; font-size: 12px; color: #6c757d;">Showing top {len(results)} candidates with ≥40% similarity</div>'
+            
+            return format_html(html)
+            
+        except Exception as e:
+            return format_html(
+                '<div style="padding: 20px; background: #f8d7da; border-left: 4px solid #dc3545; border-radius: 4px; margin: 15px 0;">'
+                f'<strong style="color: #721c24; font-size: 14px;">Error Loading Matches</strong><br>'
+                f'<span style="color: #721c24; font-size: 13px;">{str(e)}</span>'
+                '</div>'
+            )
+    
+    matching_candidates_display.short_description = '🎯 Top Matching Candidates'
     
     def batch_analyze_job_applications(self, request, queryset):
         """Admin action to batch analyze all pending applications for selected jobs."""
@@ -41,33 +132,6 @@ class JobPostingAdmin(admin.ModelAdmin):
         )
     batch_analyze_job_applications.short_description = "Batch analyze all pending applications"
     
-    def find_matching_candidates(self, request, queryset):
-        """Admin action to find matching candidates for selected jobs."""
-        if queryset.count() != 1:
-            self.message_user(request, "Please select exactly one job posting.", level='WARNING')
-            return
-        
-        job = queryset.first()
-        if not job.has_embedding:
-            self.message_user(request, f"Job '{job.title}' does not have an embedding yet. Please wait.", level='WARNING')
-            return
-        
-        # Import here to avoid circular imports
-        from recruitment.views.search_views import _vector_search_candidates
-        
-        results = _vector_search_candidates(job.description_embedding, limit=20, similarity_threshold=0.5)
-        
-        if results:
-            message = f"Top {len(results)} matching candidates for '{job.title}':\n"
-            for i, candidate in enumerate(results[:5], 1):
-                message += f"{i}. {candidate['name']} ({candidate['email']}) - {candidate['similarity_score']:.2%} match\n"
-            if len(results) > 5:
-                message += f"... and {len(results) - 5} more"
-            self.message_user(request, message)
-        else:
-            self.message_user(request, f"No matching candidates found for '{job.title}'.", level='WARNING')
-    find_matching_candidates.short_description = "Find matching candidates for job"
-    
     def regenerate_embeddings(self, request, queryset):
         """Admin action to regenerate embeddings for selected jobs."""
         from recruitment.tasks import generate_job_embedding_async
@@ -83,12 +147,32 @@ class JobPostingAdmin(admin.ModelAdmin):
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
-    """Admin interface for Candidate model."""
+    """Enhanced admin interface for Candidate model with vector search."""
     list_display = ['name', 'email', 'created_at', 'application_count', 'embedding_status']
     list_filter = ['created_at', 'embedding_generated_at']
     search_fields = ['name', 'email']
-    readonly_fields = ['created_at', 'embedding_generated_at', 'resume_text_cache']
-    actions = ['find_similar_candidates', 'regenerate_embeddings']
+    readonly_fields = ['created_at', 'embedding_generated_at', 'resume_text_cache', 'similar_candidates_display']
+    exclude = ['resume_embedding']  # Hide embedding vector from form
+    actions = ['regenerate_embeddings']
+    
+    fieldsets = (
+        ('Candidate Information', {
+            'fields': ('name', 'email', 'resume_file')
+        }),
+        ('Resume Content', {
+            'fields': ('resume_text_cache',),
+            'classes': ('collapse',),
+            'description': 'Extracted text from resume PDF'
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'embedding_generated_at'),
+            'classes': ('collapse',)
+        }),
+        ('🔍 AI-Powered Similar Profiles', {
+            'fields': ('similar_candidates_display',),
+            'description': 'Candidates with similar skills and experience based on semantic analysis'
+        }),
+    )
     
     def application_count(self, obj):
         """Display number of applications by this candidate."""
@@ -104,34 +188,79 @@ class CandidateAdmin(admin.ModelAdmin):
             return format_html('<span style="color: orange;">⚠ Pending</span>')
     embedding_status.short_description = 'Embedding'
     
-    def find_similar_candidates(self, request, queryset):
-        """Admin action to find similar candidates."""
-        if queryset.count() != 1:
-            self.message_user(request, "Please select exactly one candidate.", level='WARNING')
-            return
-        
-        candidate = queryset.first()
-        if not candidate.has_embedding:
-            self.message_user(request, f"Candidate '{candidate.name}' does not have an embedding yet. Please wait.", level='WARNING')
-            return
+    def similar_candidates_display(self, obj):
+        """Display similar candidates with clickable links."""
+        if not obj.has_embedding:
+            return format_html(
+                '<div style="padding: 20px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin: 15px 0;">'
+                '<strong style="font-size: 14px;">⚠ Embedding Generation in Progress</strong><br>'
+                '<span style="color: #856404; font-size: 13px;">Please wait a few seconds for the AI to analyze this candidate\'s profile, then refresh this page.</span>'
+                '</div>'
+            )
         
         # Import here to avoid circular imports
         from recruitment.views.search_views import _vector_search_candidates
         
-        all_results = _vector_search_candidates(candidate.resume_embedding, limit=11, similarity_threshold=0.5)
-        # Filter out the candidate itself
-        results = [r for r in all_results if r['id'] != candidate.id][:10]
-        
-        if results:
-            message = f"Top {len(results)} similar candidates to '{candidate.name}':\n"
-            for i, similar in enumerate(results[:5], 1):
-                message += f"{i}. {similar['name']} ({similar['email']}) - {similar['similarity_score']:.2%} similar\n"
-            if len(results) > 5:
-                message += f"... and {len(results) - 5} more"
-            self.message_user(request, message)
-        else:
-            self.message_user(request, f"No similar candidates found for '{candidate.name}'.", level='WARNING')
-    find_similar_candidates.short_description = "Find similar candidates"
+        try:
+            # Search for similar candidates, excluding the current one
+            all_results = _vector_search_candidates(obj.resume_embedding, limit=11, similarity_threshold=0.4)
+            results = [r for r in all_results if r['id'] != obj.id][:10]
+            
+            if not results:
+                return format_html(
+                    '<div style="padding: 20px; background: #f8f9fa; border-left: 4px solid #6c757d; border-radius: 4px; margin: 15px 0;">'
+                    '<strong style="font-size: 14px;">No Similar Candidates Found</strong><br>'
+                    '<span style="color: #6c757d; font-size: 13px;">No other candidates meet the 40% similarity threshold.</span>'
+                    '</div>'
+                )
+            
+            html = '<div style="margin: 15px 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
+            html += '<table style="width: 100%; border-collapse: collapse;">'
+            html += '<thead><tr style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">'
+            html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Rank</th>'
+            html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Candidate Name</th>'
+            html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Email</th>'
+            html += '<th style="padding: 12px 15px; text-align: right; font-weight: 600;">Similarity</th>'
+            html += '</tr></thead><tbody>'
+            
+            for i, candidate in enumerate(results, 1):
+                candidate_url = reverse('admin:recruitment_candidate_change', args=[candidate['id']])
+                score = candidate['similarity_score']
+                
+                # Color code based on score
+                if score >= 0.7:
+                    score_color = '#fff'
+                    score_bg = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)'
+                elif score >= 0.5:
+                    score_color = '#000'
+                    score_bg = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                else:
+                    score_color = '#000'
+                    score_bg = 'linear-gradient(135deg, #e0e0e0 0%, #c0c0c0 100%)'
+                
+                row_bg = '#f8f9fa' if i % 2 == 0 else '#ffffff'
+                
+                html += f'<tr style="background: {row_bg}; border-bottom: 1px solid #e9ecef; transition: background 0.2s;" onmouseover="this.style.background=\'#e3f2fd\'" onmouseout="this.style.background=\'{row_bg}\'">'
+                html += f'<td style="padding: 15px;"><strong style="color: #f5576c; font-size: 16px;">#{i}</strong></td>'
+                html += f'<td style="padding: 15px;"><a href="{candidate_url}" style="text-decoration: none; color: #1976d2; font-weight: 500; font-size: 14px;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">{candidate["name"]}</a></td>'
+                html += f'<td style="padding: 15px; color: #6c757d; font-size: 13px;">{candidate["email"]}</td>'
+                html += f'<td style="padding: 15px; text-align: right;"><span style="background: {score_bg}; color: {score_color}; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 13px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">{score:.1%}</span></td>'
+                html += '</tr>'
+            
+            html += '</tbody></table></div>'
+            html += f'<div style="padding: 10px 15px; background: #f8f9fa; border-radius: 4px; margin-top: 10px; font-size: 12px; color: #6c757d;">Showing top {len(results)} similar candidates with ≥40% similarity</div>'
+            
+            return format_html(html)
+            
+        except Exception as e:
+            return format_html(
+                '<div style="padding: 20px; background: #f8d7da; border-left: 4px solid #dc3545; border-radius: 4px; margin: 15px 0;">'
+                f'<strong style="color: #721c24; font-size: 14px;">Error Loading Similar Candidates</strong><br>'
+                f'<span style="color: #721c24; font-size: 13px;">{str(e)}</span>'
+                '</div>'
+            )
+    
+    similar_candidates_display.short_description = '🎯 Similar Candidate Profiles'
     
     def regenerate_embeddings(self, request, queryset):
         """Admin action to regenerate embeddings for selected candidates."""
@@ -146,6 +275,7 @@ class CandidateAdmin(admin.ModelAdmin):
     regenerate_embeddings.short_description = "Regenerate embeddings"
 
 
+# Keep the existing Application admin as-is
 @admin.register(Application)
 class ApplicationAdmin(admin.ModelAdmin):
     """Admin interface for Application model."""
