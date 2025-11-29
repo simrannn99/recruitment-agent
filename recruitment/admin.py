@@ -366,7 +366,7 @@ class ApplicationAdmin(admin.ModelAdmin):
     list_display = [
         'candidate_name',
         'job_title',
-        'status',
+        'status_display',
         'ai_score_display',
         'applied_at'
     ]
@@ -416,6 +416,30 @@ class ApplicationAdmin(admin.ModelAdmin):
         return obj.job.title
     job_title.short_description = 'Job'
     job_title.admin_order_field = 'job__title'
+    
+    def status_display(self, obj):
+        """Display status with color-coded badges."""
+        status = obj.status or 'pending'  # Default to pending if NULL
+        
+        # Color code based on status
+        status_colors = {
+            'pending': ('#856404', '#fff3cd', '⏳'),
+            'accepted': ('#155724', '#d4edda', '✓'),
+            'rejected': ('#721c24', '#f8d7da', '✗'),
+        }
+        
+        text_color, bg_color, icon = status_colors.get(status, ('#6c757d', '#f8f9fa', '?'))
+        display_text = status.capitalize()
+        
+        return format_html(
+            '<span style="background: {}; color: {}; padding: 4px 12px; border-radius: 12px; font-weight: 500; font-size: 12px; display: inline-block;">{} {}</span>',
+            bg_color,
+            text_color,
+            icon,
+            display_text
+        )
+    status_display.short_description = 'Status'
+    status_display.admin_order_field = 'status'
     
     def ai_score_display(self, obj):
         """Display AI score with color coding."""

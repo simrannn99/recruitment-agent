@@ -391,9 +391,9 @@ BS Computer Engineering, Purdue University'''
             # Frank (Junior) - applied to Senior Python Developer (mismatch)
             (candidates[5], jobs[0], 'rejected', 45),
             # Grace (Senior Full Stack) - applied to Full Stack Engineer
-            (candidates[6], jobs[1], 'under_review', 93),
+            (candidates[6], jobs[1], 'pending', 93),
             # Henry (Cloud Architect) - applied to DevOps Engineer
-            (candidates[7], jobs[2], 'under_review', 89),
+            (candidates[7], jobs[2], 'pending', 89),
             # Alice also applied to ML Engineer (cross-application)
             (candidates[0], jobs[3], 'pending', None),
             # Bob applied to Frontend Developer
