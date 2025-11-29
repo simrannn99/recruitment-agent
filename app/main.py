@@ -60,8 +60,24 @@ async def analyze_resume(request: ScreeningRequest) -> ScreeningResponse:
             job_description=request.job_description, resume_text=request.resume_text
         )
         return result
+    except ConnectionError as e:
+        raise HTTPException(
+            status_code=503, 
+            detail=f"LLM service unavailable. Is Ollama running? Error: {str(e)}"
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422, 
+            detail=f"Invalid response from LLM: {str(e)}"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error analyzing resume: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"ERROR in analyze_resume: {error_details}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error analyzing resume: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

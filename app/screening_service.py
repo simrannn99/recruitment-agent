@@ -70,10 +70,20 @@ class ResumeScreeningService:
         Returns:
             ScreeningResponse with structured evaluation
         """
-        # Get the raw response
-        result = await self.chain.ainvoke(
-            {"job_description": job_description, "resume_text": resume_text}
-        )
+        try:
+            # Get the raw response
+            result = await self.chain.ainvoke(
+                {"job_description": job_description, "resume_text": resume_text}
+            )
+        except Exception as e:
+            error_msg = str(e)
+            if "Connection" in error_msg or "refused" in error_msg:
+                raise ConnectionError(
+                    f"Cannot connect to LLM service. "
+                    f"Please ensure Ollama is running at {os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')}. "
+                    f"Error: {error_msg}"
+                )
+            raise
 
         # Extract content based on response type
         if hasattr(result, "content"):
