@@ -23,3 +23,8 @@ psycopg2-binary>=2.9.9
 celery[amqp]>=5.3.0
 redis>=5.0.0
 flower>=2.0.0
+
+# Vector Search and Embeddings
+pgvector>=0.2.5
+sentence-transformers>=2.2.0
+numpy>=1.24.0

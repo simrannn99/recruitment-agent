@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: recruitment-postgres
     environment:
       POSTGRES_DB: ${DB_NAME:-recruitment_db}
@@ -61,6 +61,9 @@ services:
       # Celery Configuration
       CELERY_BROKER_URL: amqp://guest:guest@rabbitmq:5672//
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # Embedding Service Configuration
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sentence-transformers}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       # Email Configuration
       EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@recruitment.com}
@@ -135,6 +138,9 @@ services:
       # AI Service Configuration
       AI_SERVICE_URL: http://fastapi-service:8000/analyze
       AI_SERVICE_TIMEOUT: 120
+      # Embedding Service Configuration
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sentence-transformers}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -144,7 +150,7 @@ services:
         condition: service_healthy
       fastapi-service:
         condition: service_started
-    command: celery -A recruitment_backend worker -Q high_priority,medium_priority,low_priority -l info
+    command: celery -A recruitment_backend worker -Q high_priority,embeddings,medium_priority,low_priority -l info
     volumes:
       - ./recruitment:/app/recruitment
       - ./recruitment_backend:/app/recruitment_backend
