@@ -66,7 +66,14 @@ class JobPostingAdmin(admin.ModelAdmin):
                     '</div>'
                 )
             
-            html = '<div style="margin: 15px 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
+            # Wrap in collapsible details element
+            html = '<details style="margin: 15px 0;">'
+            html += '<summary style="cursor: pointer; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; font-weight: 600; font-size: 14px; user-select: none; list-style: none; display: flex; align-items: center; justify-content: space-between;">'
+            html += f'<span>🎯 Top {len(results)} Matching Candidates (Click to expand)</span>'
+            html += '<span style="font-size: 20px;">▼</span>'
+            html += '</summary>'
+            
+            html += '<div style="margin-top: 10px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
             html += '<table style="width: 100%; border-collapse: collapse;">'
             html += '<thead><tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">'
             html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Rank</th>'
@@ -104,6 +111,7 @@ class JobPostingAdmin(admin.ModelAdmin):
             
             html += '</tbody></table></div>'
             html += f'<div style="padding: 10px 15px; background: #f8f9fa; border-radius: 4px; margin-top: 10px; font-size: 12px; color: #6c757d;">Showing top {len(results)} candidates with ≥40% similarity</div>'
+            html += '</details>'
             
             return format_html(html)
             
@@ -216,7 +224,14 @@ class CandidateAdmin(admin.ModelAdmin):
                     '</div>'
                 )
             
-            html = '<div style="margin: 15px 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
+            # Wrap in collapsible details element
+            html = '<details style="margin: 15px 0;">'
+            html += '<summary style="cursor: pointer; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; font-weight: 600; font-size: 14px; user-select: none; list-style: none; display: flex; align-items: center; justify-content: space-between;">'
+            html += f'<span>💼 Top {len(results)} Matching Jobs (Click to expand)</span>'
+            html += '<span style="font-size: 20px;">▼</span>'
+            html += '</summary>'
+            
+            html += '<div style="margin-top: 10px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
             html += '<table style="width: 100%; border-collapse: collapse;">'
             html += '<thead><tr style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">'
             html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Rank</th>'
@@ -259,6 +274,7 @@ class CandidateAdmin(admin.ModelAdmin):
             
             html += '</tbody></table></div>'
             html += f'<div style="padding: 10px 15px; background: #f8f9fa; border-radius: 4px; margin-top: 10px; font-size: 12px; color: #6c757d;">Showing top {len(results)} jobs with ≥40% similarity</div>'
+            html += '</details>'
             
             return format_html(html)
             
@@ -298,7 +314,14 @@ class CandidateAdmin(admin.ModelAdmin):
                     '</div>'
                 )
             
-            html = '<div style="margin: 15px 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
+            # Wrap in collapsible details element
+            html = '<details style="margin: 15px 0;">'
+            html += '<summary style="cursor: pointer; padding: 15px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border-radius: 8px; font-weight: 600; font-size: 14px; user-select: none; list-style: none; display: flex; align-items: center; justify-content: space-between;">'
+            html += f'<span>🔍 Top {len(results)} Similar Candidates (Click to expand)</span>'
+            html += '<span style="font-size: 20px;">▼</span>'
+            html += '</summary>'
+            
+            html += '<div style="margin-top: 10px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
             html += '<table style="width: 100%; border-collapse: collapse;">'
             html += '<thead><tr style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">'
             html += '<th style="padding: 12px 15px; text-align: left; font-weight: 600;">Rank</th>'
@@ -333,6 +356,7 @@ class CandidateAdmin(admin.ModelAdmin):
             
             html += '</tbody></table></div>'
             html += f'<div style="padding: 10px 15px; background: #f8f9fa; border-radius: 4px; margin-top: 10px; font-size: 12px; color: #6c757d;">Showing top {len(results)} similar candidates with ≥40% similarity</div>'
+            html += '</details>'
             
             return format_html(html)
             
