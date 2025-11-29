@@ -4,6 +4,7 @@ REM This script starts all services needed for local development
 
 echo ============================================================
 echo   Recruitment Platform - Local Development Startup
+echo   WITH VECTOR SEARCH SEMANTIC MATCHING
 echo ============================================================
 echo.
 
@@ -38,9 +39,13 @@ timeout /t 2 /nobreak >nul
 echo      FastAPI started!
 echo.
 
-REM Start Celery Worker (with priority queues)
-echo [5/5] Starting Celery Worker (priority queues: high, medium, low)...
-start "Celery Worker" cmd /k "cd /d %~dp0 && venv\Scripts\activate && celery -A recruitment_backend worker -Q high_priority,medium_priority,low_priority -l info --pool=solo"
+REM Start Celery Worker (with priority queues including dedicated embeddings queue)
+echo [5/5] Starting Celery Worker (priority queues: high, embeddings, medium, low)...
+echo      - High: Emails
+echo      - Embeddings: Vector Search (dedicated, won't be blocked)
+echo      - Medium: AI Analysis
+echo      - Low: Maintenance
+start "Celery Worker" cmd /k "cd /d %~dp0 && venv\Scripts\activate && celery -A recruitment_backend worker -Q high_priority,embeddings,medium_priority,low_priority -l info --pool=solo"
 timeout /t 2 /nobreak >nul
 echo      Celery Worker started with priority queues!
 echo.
@@ -56,11 +61,22 @@ echo ============================================================
 echo   ALL SERVICES STARTED SUCCESSFULLY!
 echo ============================================================
 echo.
-echo   Services running:
+echo   Core Services:
 echo   - Django Admin:      http://localhost:8001/admin
 echo   - FastAPI Docs:      http://localhost:8000/docs
 echo   - Flower Dashboard:  http://localhost:5555
 echo   - RabbitMQ UI:       http://localhost:15672 (guest/guest)
+echo.
+echo   Vector Search API Endpoints:
+echo   - Search Candidates: POST http://localhost:8001/api/search/candidates/
+echo   - Search Jobs:       POST http://localhost:8001/api/search/jobs/
+echo   - Similar Candidates: POST http://localhost:8001/api/search/similar-candidates/
+echo.
+echo   Next Steps:
+echo   1. Run migrations:        python manage.py migrate
+echo   2. Generate embeddings:   python manage.py generate_embeddings --all
+echo   3. Check status:          python manage.py generate_embeddings --stats
+echo   4. Run tests:             python scripts\test_vector_search.py
 echo.
 echo   Press any key to view service status...
 pause >nul
@@ -71,7 +87,8 @@ echo Docker Services Status:
 docker-compose -f docker-compose.local.yml ps
 echo.
 echo ============================================================
-echo   To stop all services, run: stop_services.bat
+echo   To stop all services, run: stop_all.bat
 echo ============================================================
 echo.
 pause
+

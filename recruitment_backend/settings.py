@@ -171,6 +171,7 @@ from kombu import Queue
 
 CELERY_TASK_QUEUES = (
     Queue('high_priority', routing_key='high_priority', priority=10),
+    Queue('embeddings', routing_key='embeddings', priority=7),  # Dedicated queue for embeddings
     Queue('medium_priority', routing_key='medium_priority', priority=5),
     Queue('low_priority', routing_key='low_priority', priority=1),
 )
@@ -183,7 +184,21 @@ CELERY_TASK_ROUTES = {
         'routing_key': 'high_priority',
     },
     
-    # Medium priority: AI analysis (important but slow)
+    # Embeddings queue: Vector search tasks (fast, shouldn't be blocked by AI)
+    'recruitment.tasks.generate_candidate_embedding_async': {
+        'queue': 'embeddings',
+        'routing_key': 'embeddings',
+    },
+    'recruitment.tasks.generate_job_embedding_async': {
+        'queue': 'embeddings',
+        'routing_key': 'embeddings',
+    },
+    'recruitment.tasks.backfill_embeddings': {
+        'queue': 'embeddings',
+        'routing_key': 'embeddings',
+    },
+    
+    # Medium priority: AI analysis (can be slow, uses Ollama)
     'recruitment.tasks.analyze_application_async': {
         'queue': 'medium_priority',
         'routing_key': 'medium_priority',
@@ -199,6 +214,7 @@ CELERY_TASK_ROUTES = {
         'routing_key': 'low_priority',
     },
 }
+
 
 # Default queue for unrouted tasks
 CELERY_TASK_DEFAULT_QUEUE = 'medium_priority'

@@ -205,3 +205,188 @@ def cleanup_old_results():
     except Exception as e:
         logger.error(f"Cleanup task failed: {str(e)}")
         raise
+
+
+# ============================================
+# Vector Search / Embedding Tasks
+# ============================================
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def generate_candidate_embedding_async(self, candidate_id):
+    """
+    Generate embedding for a candidate's resume.
+    
+    This task extracts text from the resume PDF and generates a vector embedding
+    for semantic search capabilities.
+    
+    Args:
+        self: Task instance (when bind=True)
+        candidate_id: ID of the Candidate
+        
+    Returns:
+        dict: Result with embedding status
+    """
+    try:
+        from recruitment.models import Candidate
+        from recruitment.services.embedding_service import EmbeddingService
+        from recruitment.services.ai_analyzer import extract_text_from_pdf
+        from django.utils import timezone
+        
+        logger.info(f"[Task {self.request.id}] Generating embedding for candidate {candidate_id}")
+        
+        # Fetch candidate
+        candidate = Candidate.objects.get(id=candidate_id)
+        
+        # Extract resume text if not cached
+        if not candidate.resume_text_cache:
+            resume_text = extract_text_from_pdf(candidate.resume_file.path)
+            candidate.resume_text_cache = resume_text
+        else:
+            resume_text = candidate.resume_text_cache
+        
+        if not resume_text or not resume_text.strip():
+            logger.warning(f"No text extracted from resume for candidate {candidate_id}")
+            return {'status': 'failed', 'reason': 'No text extracted'}
+        
+        # Generate embedding
+        embedding_service = EmbeddingService()
+        embedding = embedding_service.generate_embedding(resume_text)
+        
+        if embedding:
+            candidate.resume_embedding = embedding
+            candidate.embedding_generated_at = timezone.now()
+            candidate.save(update_fields=['resume_text_cache', 'resume_embedding', 'embedding_generated_at'])
+            
+            logger.info(f"[Task {self.request.id}] Successfully generated embedding for candidate {candidate_id}")
+            return {
+                'status': 'success',
+                'candidate_id': candidate_id,
+                'embedding_dimension': len(embedding)
+            }
+        else:
+            logger.error(f"Failed to generate embedding for candidate {candidate_id}")
+            return {'status': 'failed', 'reason': 'Embedding generation returned None'}
+            
+    except Exception as e:
+        logger.error(f"[Task {self.request.id}] Error generating embedding for candidate {candidate_id}: {str(e)}")
+        countdown = 60 * (self.request.retries + 1)
+        raise self.retry(exc=e, countdown=countdown)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def generate_job_embedding_async(self, job_id):
+    """
+    Generate embedding for a job posting description.
+    
+    Args:
+        self: Task instance (when bind=True)
+        job_id: ID of the JobPosting
+        
+    Returns:
+        dict: Result with embedding status
+    """
+    try:
+        from recruitment.models import JobPosting
+        from recruitment.services.embedding_service import EmbeddingService
+        from django.utils import timezone
+        
+        logger.info(f"[Task {self.request.id}] Generating embedding for job {job_id}")
+        
+        # Fetch job posting
+        job = JobPosting.objects.get(id=job_id)
+        
+        if not job.description or not job.description.strip():
+            logger.warning(f"No description for job {job_id}")
+            return {'status': 'failed', 'reason': 'No description'}
+        
+        # Generate embedding
+        embedding_service = EmbeddingService()
+        embedding = embedding_service.generate_embedding(job.description)
+        
+        if embedding:
+            job.description_embedding = embedding
+            job.embedding_generated_at = timezone.now()
+            job.save(update_fields=['description_embedding', 'embedding_generated_at'])
+            
+            logger.info(f"[Task {self.request.id}] Successfully generated embedding for job {job_id}")
+            return {
+                'status': 'success',
+                'job_id': job_id,
+                'embedding_dimension': len(embedding)
+            }
+        else:
+            logger.error(f"Failed to generate embedding for job {job_id}")
+            return {'status': 'failed', 'reason': 'Embedding generation returned None'}
+            
+    except Exception as e:
+        logger.error(f"[Task {self.request.id}] Error generating embedding for job {job_id}: {str(e)}")
+        countdown = 60 * (self.request.retries + 1)
+        raise self.retry(exc=e, countdown=countdown)
+
+
+@shared_task
+def backfill_embeddings(model_type='all', force=False):
+    """
+    Backfill embeddings for existing candidates and/or jobs.
+    
+    This task is useful for generating embeddings for records that were created
+    before the vector search feature was implemented.
+    
+    Args:
+        model_type: 'candidate', 'job', or 'all' (default: 'all')
+        force: If True, regenerate embeddings even if they exist (default: False)
+        
+    Returns:
+        dict: Summary of backfill operation
+    """
+    try:
+        from recruitment.models import Candidate, JobPosting
+        
+        logger.info(f"Starting embedding backfill for: {model_type} (force={force})")
+        
+        results = {
+            'candidates': {'total': 0, 'queued': 0, 'skipped': 0},
+            'jobs': {'total': 0, 'queued': 0, 'skipped': 0}
+        }
+        
+        # Backfill candidates
+        if model_type in ['candidate', 'all']:
+            if force:
+                candidates = Candidate.objects.all()
+            else:
+                candidates = Candidate.objects.filter(resume_embedding__isnull=True)
+            
+            results['candidates']['total'] = candidates.count()
+            
+            for candidate in candidates:
+                try:
+                    generate_candidate_embedding_async.delay(candidate.id)
+                    results['candidates']['queued'] += 1
+                except Exception as e:
+                    logger.error(f"Failed to queue embedding for candidate {candidate.id}: {e}")
+                    results['candidates']['skipped'] += 1
+        
+        # Backfill jobs
+        if model_type in ['job', 'all']:
+            if force:
+                jobs = JobPosting.objects.all()
+            else:
+                jobs = JobPosting.objects.filter(description_embedding__isnull=True)
+            
+            results['jobs']['total'] = jobs.count()
+            
+            for job in jobs:
+                try:
+                    generate_job_embedding_async.delay(job.id)
+                    results['jobs']['queued'] += 1
+                except Exception as e:
+                    logger.error(f"Failed to queue embedding for job {job.id}: {e}")
+                    results['jobs']['skipped'] += 1
+        
+        logger.info(f"Embedding backfill completed: {results}")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Embedding backfill failed: {str(e)}")
+        raise
+
