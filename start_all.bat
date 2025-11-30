@@ -8,8 +8,8 @@ echo   WITH VECTOR SEARCH + WEBSOCKET REAL-TIME UPDATES
 echo ============================================================
 echo.
 
-REM Start Docker services (PostgreSQL, RabbitMQ, Redis)
-echo [1/5] Starting Docker services (PostgreSQL, RabbitMQ, Redis)...
+REM Start Docker services (PostgreSQL, RabbitMQ, Redis, Nginx)
+echo [1/5] Starting Docker services (PostgreSQL, RabbitMQ, Redis, Nginx)...
 docker-compose -f docker-compose.local.yml up -d
 if %errorlevel% neq 0 (
     echo ERROR: Failed to start Docker services
@@ -61,17 +61,25 @@ echo ============================================================
 echo   ALL SERVICES STARTED SUCCESSFULLY!
 echo ============================================================
 echo.
-echo   Core Services:
-echo   - Django Admin:      http://localhost:8001/admin
-echo   - WebSocket Test:    http://localhost:8001/ws-test
+echo   Access via Nginx (Recommended):
+echo   - Main Application:  http://localhost
+echo   - Django Admin:      http://localhost/admin
+echo   - WebSocket Test:    http://localhost/ws-test
+echo   - FastAPI Docs:      http://localhost/api/ai/docs
+echo   - RabbitMQ UI:       http://localhost/rabbitmq
+echo   - Health Check:      http://localhost/health
+echo.
+echo   Direct Access (Specific Paths):
+echo   - Django Admin:      http://localhost:8001/admin/
+echo   - Django WS Test:    http://localhost:8001/ws-test/
 echo   - FastAPI Docs:      http://localhost:8000/docs
-echo   - Flower Dashboard:  http://localhost:5555
-echo   - RabbitMQ UI:       http://localhost:15672 (guest/guest)
+echo   - Flower:            http://localhost:5555
+echo   - RabbitMQ:          http://localhost:15672
 echo.
 echo   Vector Search API Endpoints:
-echo   - Search Candidates: POST http://localhost:8001/api/search/candidates/
-echo   - Search Jobs:       POST http://localhost:8001/api/search/jobs/
-echo   - Similar Candidates: POST http://localhost:8001/api/search/similar-candidates/
+echo   - Search Candidates:     POST http://localhost/api/search/candidates/
+echo   - Search Jobs:           POST http://localhost/api/search/jobs/
+echo   - Similar Candidates:    POST http://localhost/api/search/similar-candidates/
 echo.
 echo   Next Steps:
 echo   1. Run migrations:        python manage.py migrate

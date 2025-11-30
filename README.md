@@ -65,27 +65,63 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+```
 
-# Start infrastructure
+### Deployment Options
+
+#### Option 1: Full Docker (Production-like)
+All services run in Docker containers.
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Run migrations
+docker-compose exec django-backend python manage.py migrate
+docker-compose exec django-backend python manage.py createsuperuser
+
+# Collect static files
+docker-compose exec django-backend python manage.py collectstatic --noinput
+```
+
+#### Option 2: Local Development (Recommended for Development)
+Infrastructure in Docker, Django/FastAPI on host for hot reload and debugging.
+
+```bash
+# Start infrastructure only (PostgreSQL, Redis, RabbitMQ, Nginx)
 docker-compose -f docker-compose.local.yml up -d
 
 # Run migrations
 python manage.py migrate
 python manage.py createsuperuser
 
-# Start services
+# Collect static files
+python manage.py collectstatic --noinput
+
+# Start services on host
 .\start_all.bat  # Windows
 # OR
 ./start_all.sh   # Linux/Mac
 ```
 
+
 ### Access Points
 
-- **Django Admin**: http://localhost:8001/admin
-- **WebSocket Test**: http://localhost:8001/ws-test
+With nginx reverse proxy:
+
+- **Main Application**: http://localhost
+- **Django Admin**: http://localhost/admin
+- **WebSocket Test**: http://localhost/ws-test
+- **FastAPI Docs**: http://localhost/api/ai/docs
+- **RabbitMQ UI**: http://localhost/rabbitmq
+- **Health Check**: http://localhost/health
+
+Direct service access (specific paths):
+- **Django Admin**: http://localhost:8001/admin/
+- **Django WebSocket Test**: http://localhost:8001/ws-test/
 - **FastAPI Docs**: http://localhost:8000/docs
 - **Flower Dashboard**: http://localhost:5555
-- **RabbitMQ UI**: http://localhost:15672 (guest/guest)
+- **RabbitMQ Management**: http://localhost:15672
 
 ---
 
@@ -114,6 +150,7 @@ python manage.py createsuperuser
 
 ### Infrastructure
 - **Docker & Docker Compose**: Containerization
+- **Nginx**: Reverse proxy & load balancer
 - **RabbitMQ**: Message broker
 - **Redis**: Result backend & WebSocket channel layer
 - **Flower**: Celery monitoring

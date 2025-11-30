@@ -7,7 +7,7 @@ echo ============================================================
 echo.
 
 REM Stop Docker services
-echo [1/2] Stopping Docker services...
+echo [1/2] Stopping Docker services (PostgreSQL, RabbitMQ, Redis, Nginx)...
 docker-compose -f docker-compose.local.yml stop
 echo      Docker services stopped!
 echo.
