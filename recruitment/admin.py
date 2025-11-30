@@ -520,11 +520,15 @@ class ApplicationAdmin(admin.ModelAdmin):
     def trigger_ai_analysis_async(self, request, queryset):
         """Admin action to trigger AI analysis for selected applications (async)."""
         from recruitment.tasks import analyze_application_async
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
         
         count = 0
+        task_ids = []
         for application in queryset:
             try:
-                analyze_application_async.delay(application.id)
+                task = analyze_application_async.delay(application.id)
+                task_ids.append(task.id)
                 count += 1
             except Exception as e:
                 self.message_user(
@@ -536,8 +540,14 @@ class ApplicationAdmin(admin.ModelAdmin):
         if count > 0:
             self.message_user(
                 request,
-                f"Queued AI analysis for {count} application(s). Check Flower for progress."
+                f"Queued AI analysis for {count} application(s). Real-time updates enabled."
             )
+            
+            # Redirect to changelist with task IDs in URL fragment for WebSocket monitoring
+            changelist_url = reverse('admin:recruitment_application_changelist')
+            # Join multiple task IDs with commas
+            task_ids_param = ','.join(task_ids)
+            return HttpResponseRedirect(f"{changelist_url}#task={task_ids_param}")
     trigger_ai_analysis_async.short_description = "Re-analyze selected applications (async)"
     
     def accept_applications(self, request, queryset):

@@ -4,7 +4,7 @@ REM This script starts all services needed for local development
 
 echo ============================================================
 echo   Recruitment Platform - Local Development Startup
-echo   WITH VECTOR SEARCH + WEBSOCKET REAL-TIME UPDATES
+echo   WITH VECTOR SEARCH + WEBSOCKET + MONITORING STACK
 echo ============================================================
 echo.
 
@@ -64,17 +64,26 @@ echo.
 echo   Access via Nginx (Recommended):
 echo   - Main Application:  http://localhost
 echo   - Django Admin:      http://localhost/admin
+echo   - Django Metrics:    http://localhost/metrics
 echo   - WebSocket Test:    http://localhost/ws-test
 echo   - FastAPI Docs:      http://localhost/api/ai/docs
 echo   - RabbitMQ UI:       http://localhost/rabbitmq
+echo   - Grafana:           http://localhost/grafana (admin/admin)
+echo   - Prometheus:        http://localhost/prometheus
+echo   - Prometheus Targets: http://localhost/prometheus/targets
 echo   - Health Check:      http://localhost/health
 echo.
 echo   Direct Access (Specific Paths):
 echo   - Django Admin:      http://localhost:8001/admin/
 echo   - Django WS Test:    http://localhost:8001/ws-test/
+echo   - Django Metrics:    http://localhost:8001/metrics
 echo   - FastAPI Docs:      http://localhost:8000/docs
+echo   - FastAPI Metrics:   http://localhost:8000/metrics
 echo   - Flower:            http://localhost:5555
 echo   - RabbitMQ:          http://localhost:15672
+echo   - Grafana:           http://localhost:3000
+echo   - Prometheus:        http://localhost:9090
+echo   - Prometheus Targets: http://localhost:9090/targets
 echo.
 echo   Vector Search API Endpoints:
 echo   - Search Candidates:     POST http://localhost/api/search/candidates/
@@ -87,6 +96,7 @@ echo   2. Generate embeddings:   python manage.py generate_embeddings --all
 echo   3. Check status:          python manage.py generate_embeddings --stats
 echo   4. Run tests:             python scripts\test_vector_search.py
 echo   5. Test WebSockets:       Open http://localhost:8001/ws-test
+echo   6. Check monitoring:      Open http://localhost/grafana
 echo.
 echo   Press any key to view service status...
 pause >nul

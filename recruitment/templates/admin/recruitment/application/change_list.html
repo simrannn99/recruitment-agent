@@ -83,18 +83,22 @@
             // Check URL fragment for task ID (e.g., #task=abc-123)
             const hash = window.location.hash;
             if (hash.startsWith('#task=')) {
-                const taskId = hash.substring(6);
-                if (taskId) {
-                    taskIds.push(taskId);
-                    console.log(`📌 Found task ID in URL: ${taskId}`);
+                const taskIdsParam = hash.substring(6);
+                if (taskIdsParam) {
+                    // Split by comma to handle multiple task IDs
+                    const urlTaskIds = taskIdsParam.split(',').map(id => id.trim()).filter(id => id);
+                    urlTaskIds.forEach(taskId => {
+                        taskIds.push(taskId);
+                        console.log(`📌 Found task ID in URL: ${taskId}`);
 
-                    // Store in localStorage
-                    const tasks = JSON.parse(localStorage.getItem('recentAnalysisTasks') || '[]');
-                    const exists = tasks.some(t => t.taskId === taskId);
-                    if (!exists) {
-                        tasks.push({ taskId: taskId, timestamp: Date.now() });
-                        localStorage.setItem('recentAnalysisTasks', JSON.stringify(tasks));
-                    }
+                        // Store in localStorage
+                        const tasks = JSON.parse(localStorage.getItem('recentAnalysisTasks') || '[]');
+                        const exists = tasks.some(t => t.taskId === taskId);
+                        if (!exists) {
+                            tasks.push({ taskId: taskId, timestamp: Date.now() });
+                            localStorage.setItem('recentAnalysisTasks', JSON.stringify(tasks));
+                        }
+                    });
 
                     // Clear hash
                     history.replaceState(null, null, ' ');

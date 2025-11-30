@@ -1,0 +1,51 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'recruitment-platform'
+    environment: 'local-development'
+
+scrape_configs:
+  # Django Backend Metrics (running on host)
+  - job_name: 'django'
+    static_configs:
+      - targets: ['host.docker.internal:8001']
+        labels:
+          service: 'django-backend'
+    metrics_path: '/metrics'
+
+  # FastAPI Service Metrics (running on host)
+  - job_name: 'fastapi'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+        labels:
+          service: 'fastapi-ai'
+    metrics_path: '/metrics'
+
+  # Celery Exporter Metrics
+  - job_name: 'celery'
+    static_configs:
+      - targets: ['celery-exporter:9808']
+        labels:
+          service: 'celery-workers'
+
+  # PostgreSQL Exporter Metrics
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgresql'
+
+  # RabbitMQ Metrics (running in Docker)
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['recruitment-rabbitmq-local:15692']
+        labels:
+          service: 'rabbitmq'
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'

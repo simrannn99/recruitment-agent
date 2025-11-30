@@ -30,7 +30,7 @@ SECRET_KEY = "django-insecure-vn$8k^jlkdk-ry^w394u+dp5$&=97h^m9eou0dr12ww7zlsmz)
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'host.docker.internal']
 
 
 # Application definition
@@ -45,11 +45,13 @@ INSTALLED_APPS = [
     # Third-party apps
     "rest_framework",
     "channels",  # WebSocket support
+    "django_prometheus",  # Prometheus metrics
     # Local apps
     "recruitment.apps.RecruitmentConfig",
 ]
 
 MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",  # Must be first
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -57,6 +59,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",  # Must be last
 ]
 
 ROOT_URLCONF = "recruitment_backend.urls"
@@ -102,7 +105,7 @@ CHANNEL_LAYERS = {
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_prometheus.db.backends.postgresql",  # Prometheus-instrumented backend
         "NAME": os.getenv("DB_NAME", "recruitment_db"),
         "USER": os.getenv("DB_USER", "recruitment_user"),
         "PASSWORD": os.getenv("DB_PASSWORD", ""),
