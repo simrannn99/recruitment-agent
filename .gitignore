@@ -48,3 +48,6 @@ local_settings.py
 # Migrations (optional - uncomment if you don't want to track migrations)
 # */migrations/*.py
 # !*/migrations/__init__.py
+
+# Files
+PROJECT_OVERVIEW.md

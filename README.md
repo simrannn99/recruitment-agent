@@ -123,6 +123,43 @@ Direct service access (specific paths):
 - **Flower Dashboard**: http://localhost:5555
 - **RabbitMQ Management**: http://localhost:15672
 
+Monitoring stack:
+- **Grafana Dashboards**: http://localhost/grafana (admin/admin)
+- **Prometheus**: http://localhost/prometheus
+- **Prometheus Targets**: http://localhost/prometheus/targets
+
+---
+
+## 📊 Monitoring & Observability
+
+The platform includes a **production-grade monitoring stack** with pre-configured Grafana dashboards:
+
+### Grafana Dashboard: "Recruitment Platform - Overview"
+
+Access at: **http://localhost/grafana** (login: `admin` / `admin`)
+
+**10 Real-time Panels:**
+1. **Request Rate** - HTTP requests/sec for Django & FastAPI
+2. **Response Time (p95)** - 95th percentile latencies
+3. **Celery Task Rate by State** - Success/Failure/Retry rates with task names
+4. **Celery Queue Length** - Pending tasks per queue
+5. **PostgreSQL Connections** - Active vs Max connections
+6. **PostgreSQL Transaction Rate** - Commits and rollbacks/sec
+7. **Django Error Rate** - Percentage of failed requests
+8. **Celery Workers** - Number of active workers
+9. **Database Size** - Current database size
+10. **Total Celery Tasks Processed** - Cumulative task count
+
+**Features:**
+- ✅ Auto-refresh every 10 seconds
+- ✅ Auto-provisioned on startup
+- ✅ Prometheus & Loki datasources pre-configured
+- ✅ Metrics from Django, FastAPI, Celery, PostgreSQL, and RabbitMQ
+
+**Check Metrics Health:**
+- Prometheus targets: http://localhost/prometheus/targets
+- All targets should show "UP" status
+
 ---
 
 ## 🧪 Testing WebSocket Real-Time Updates
@@ -154,6 +191,13 @@ Direct service access (specific paths):
 - **RabbitMQ**: Message broker
 - **Redis**: Result backend & WebSocket channel layer
 - **Flower**: Celery monitoring
+
+### Monitoring Stack
+- **Prometheus**: Metrics collection and time-series database
+- **Grafana**: Dashboards and visualization
+- **Loki**: Log aggregation
+- **Promtail**: Log shipping
+- **Exporters**: Celery, PostgreSQL metrics
 
 ---
 
