@@ -40,6 +40,14 @@ A production-ready recruitment platform combining **Sentence Transformers** for 
 - **Real-time monitoring**: Flower dashboard for task tracking
 - **Horizontal scaling**: Distributed Celery workers
 
+### 🤖 **Multi-Agent Orchestration** ⭐ **NEW**
+- **LangGraph workflow**: Sophisticated multi-agent coordination
+- **Specialized agents**: Retriever, Analyzer, Interviewer
+- **Tool-calling**: Database queries, email generation, scheduling
+- **Hybrid search**: Vector + keyword retrieval with intelligent ranking
+- **Execution tracing**: Full visibility into agent decisions
+- **Multi-dimensional scoring**: Technical, experience, culture fit analysis
+
 ---
 
 ## 🚀 Quick Start
@@ -113,6 +121,7 @@ With nginx reverse proxy:
 - **Django Admin**: http://localhost/admin
 - **WebSocket Test**: http://localhost/ws-test
 - **FastAPI Docs**: http://localhost/api/ai/docs
+- **Multi-Agent Analysis**: http://localhost/api/ai/agent/analyze ⭐ **NEW**
 - **RabbitMQ UI**: http://localhost/rabbitmq
 - **Health Check**: http://localhost/health
 
@@ -120,6 +129,7 @@ Direct service access (specific paths):
 - **Django Admin**: http://localhost:8001/admin/
 - **Django WebSocket Test**: http://localhost:8001/ws-test/
 - **FastAPI Docs**: http://localhost:8000/docs
+- **FastAPI Agent Docs**: http://localhost:8000/agent/analyze ⭐ **NEW**
 - **Flower Dashboard**: http://localhost:5555
 - **RabbitMQ Management**: http://localhost:15672
 
@@ -184,6 +194,8 @@ Access at: **http://localhost/grafana** (login: `admin` / `admin`)
 - **Sentence Transformers**: Embedding generation
 - **Ollama** / **OpenAI**: LLM providers
 - **PyPDF2**: PDF text extraction
+- **LangGraph**: Multi-agent orchestration ⭐ **NEW**
+- **LangChain**: LLM framework and tool-calling ⭐ **NEW**
 
 ### Infrastructure
 - **Docker & Docker Compose**: Containerization

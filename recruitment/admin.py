@@ -2,6 +2,9 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from recruitment.models import JobPosting, Candidate, Application
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @admin.register(JobPosting)
@@ -10,9 +13,9 @@ class JobPostingAdmin(admin.ModelAdmin):
     list_display = ['title', 'created_at', 'application_count', 'embedding_status']
     list_filter = ['created_at', 'embedding_generated_at']
     search_fields = ['title', 'description']
-    readonly_fields = ['created_at', 'embedding_generated_at', 'matching_candidates_display']
+    readonly_fields = ['created_at', 'embedding_generated_at', 'test_retriever_button', 'matching_candidates_display']
     exclude = ['description_embedding']  # Hide embedding vector from form
-    actions = ['batch_analyze_job_applications', 'regenerate_embeddings']
+    actions = ['test_retriever_agent', 'batch_analyze_job_applications', 'regenerate_embeddings']
     
     fieldsets = (
         ('Job Information', {
@@ -41,6 +44,10 @@ class JobPostingAdmin(admin.ModelAdmin):
         else:
             return format_html('<span style="color: orange;">⚠ Pending</span>')
     embedding_status.short_description = 'Embedding'
+    
+
+    
+    
     
     def matching_candidates_display(self, obj):
         """Display top matching candidates with clickable links."""
@@ -125,6 +132,105 @@ class JobPostingAdmin(admin.ModelAdmin):
     
     matching_candidates_display.short_description = '🎯 Top Matching Candidates'
     
+    def get_urls(self):
+        """Add custom URLs for admin actions."""
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:job_id>/test-retriever-sync/',
+                self.admin_site.admin_view(self.test_retriever_sync_view),
+                name='recruitment_jobposting_test_retriever_sync'
+            ),
+        ]
+        return custom_urls + urls
+    
+    
+    def test_retriever_sync_view(self, request, job_id):
+        """Custom view to run RetrieverAgent test synchronously."""
+        from django.shortcuts import redirect
+        from django.contrib import messages
+        from django.urls import reverse
+        from django.views.decorators.csrf import csrf_exempt
+        import os
+        
+        try:
+            # Get the job
+            job = JobPosting.objects.get(id=job_id)
+            
+            # Import agents
+            from app.agents.retriever_agent import RetrieverAgent
+            from app.agents.state import AgentState
+            from langchain_ollama import ChatOllama
+            
+            # Initialize LLM
+            llm = ChatOllama(
+                model=os.getenv("OLLAMA_MODEL", "llama3.2"),
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            )
+            
+            # Initialize RetrieverAgent
+            retriever = RetrieverAgent(llm)
+            
+            # Create initial state
+            initial_state = AgentState(
+                job_description=job.description,
+                job_id=job.id
+            )
+            
+            # Run retrieval
+            logger.info(f"[Admin] Testing RetrieverAgent for job: {job.title}")
+            result_state = retriever(initial_state)
+            
+            # Check for errors
+            if result_state.error:
+                messages.error(request, f"❌ Retrieval failed: {result_state.error}")
+            else:
+                # Display results
+                candidate_count = len(result_state.retrieved_candidates)
+                
+                if candidate_count == 0:
+                    messages.warning(
+                        request,
+                        f"⚠️ No matching candidates found for: {job.title}"
+                    )
+                else:
+                    # Show top candidates
+                    top_candidates = result_state.retrieved_candidates[:5]
+                    
+                    messages.success(
+                        request,
+                        f"✅ RetrieverAgent found {candidate_count} matching candidates for: {job.title}"
+                    )
+                    
+                    for i, candidate in enumerate(top_candidates, 1):
+                        match_score = int(candidate.similarity_score * 100)
+                        messages.info(
+                            request,
+                            f"#{i}: {candidate.name} - Match Score: {match_score}/100 "
+                            f"(Similarity: {candidate.similarity_score:.1%})"
+                        )
+                    
+                    # Show execution stats
+                    if result_state.agent_traces:
+                        trace = result_state.agent_traces[-1]
+                        tools_used = [tc.tool_name for tc in trace.tools_called]
+                        messages.info(
+                            request,
+                            f"🔧 Tools used: {', '.join(tools_used)} | "
+                            f"Execution time: {trace.execution_time_ms}ms"
+                        )
+        
+        except Exception as e:
+            logger.error(f"[Admin] RetrieverAgent test failed: {e}")
+            messages.error(
+                request,
+                f"❌ Error testing RetrieverAgent: {str(e)}"
+            )
+        
+        # Redirect back to the job detail page (change view)
+        return redirect(reverse('admin:recruitment_jobposting_change', args=[job_id]))
+    
     def batch_analyze_job_applications(self, request, queryset):
         """Admin action to batch analyze all pending applications for selected jobs."""
         from recruitment.tasks import batch_analyze_applications
@@ -151,6 +257,101 @@ class JobPostingAdmin(admin.ModelAdmin):
         
         self.message_user(request, f"Queued embedding generation for {count} job(s).")
     regenerate_embeddings.short_description = "Regenerate embeddings"
+    
+    def test_retriever_agent(self, request, queryset):
+        """
+        🔍 Test RetrieverAgent: Find matching candidates for selected jobs.
+        
+        This action demonstrates the RetrieverAgent's ability to:
+        - Parse job descriptions
+        - Search the database for matching candidates
+        - Rank candidates by relevance
+        
+        Note: This runs synchronously and may take 10-30 seconds.
+        """
+        from django.contrib import messages
+        import os
+        
+        if queryset.count() > 1:
+            messages.warning(request, "⚠️ Please select only ONE job to test the RetrieverAgent")
+            return
+        
+        job = queryset.first()
+        
+        try:
+            # Import agents
+            from app.agents.retriever_agent import RetrieverAgent
+            from app.agents.state import AgentState
+            from langchain_ollama import ChatOllama
+            
+            # Initialize LLM
+            llm = ChatOllama(
+                model=os.getenv("OLLAMA_MODEL", "llama3.2"),
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            )
+            
+            # Initialize RetrieverAgent
+            retriever = RetrieverAgent(llm)
+            
+            # Create initial state (NO candidate specified - triggers retrieval!)
+            initial_state = AgentState(
+                job_description=job.description,
+                job_id=job.id
+            )
+            
+            # Run retrieval
+            logger.info(f"[Admin] Testing RetrieverAgent for job: {job.title}")
+            result_state = retriever(initial_state)
+            
+            # Check for errors
+            if result_state.error:
+                messages.error(request, f"❌ Retrieval failed: {result_state.error}")
+                return
+            
+            # Display results
+            candidate_count = len(result_state.retrieved_candidates)
+            
+            if candidate_count == 0:
+                messages.warning(
+                    request,
+                    f"⚠️ No matching candidates found for: {job.title}"
+                )
+            else:
+                # Show top candidates
+                top_candidates = result_state.retrieved_candidates[:5]
+                
+                messages.success(
+                    request,
+                    f"✅ RetrieverAgent found {candidate_count} matching candidates for: {job.title}"
+                )
+                
+                for i, candidate in enumerate(top_candidates, 1):
+                    # Calculate match score from similarity (0-1 to 0-100)
+                    match_score = int(candidate.similarity_score * 100)
+                    messages.info(
+                        request,
+                        f"#{i}: {candidate.name} - Match Score: {match_score}/100 "
+                        f"(Similarity: {candidate.similarity_score:.1%})"
+                    )
+                
+                # Show execution stats
+                if result_state.agent_traces:
+                    trace = result_state.agent_traces[-1]
+                    tools_used = [tc.tool_name for tc in trace.tools_called]
+                    messages.info(
+                        request,
+                        f"🔧 Tools used: {', '.join(tools_used)} | "
+                        f"Execution time: {trace.execution_time_ms}ms"
+                    )
+        
+        except Exception as e:
+            logger.error(f"[Admin] RetrieverAgent test failed: {e}")
+            messages.error(
+                request,
+                f"❌ Error testing RetrieverAgent: {str(e)}"
+            )
+    
+    test_retriever_agent.short_description = "🔍 Test RetrieverAgent (Find Matching Candidates)"
 
 
 @admin.register(Candidate)
@@ -423,6 +624,7 @@ class ApplicationAdmin(admin.ModelAdmin):
     
     actions = [
         'trigger_ai_analysis_async',
+        'trigger_multiagent_analysis', 
         'accept_applications',
         'reject_applications',
         'send_acceptance_emails',
@@ -493,13 +695,50 @@ class ApplicationAdmin(admin.ModelAdmin):
         
         html = "<div style='line-height: 1.6;'>"
         
+        # Check if this is multi-agent analysis
+        is_multiagent = 'agent_traces' in obj.ai_feedback or 'detailed_analysis' in obj.ai_feedback
+        
+        if is_multiagent:
+            html += "<div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;'>"
+            html += "<strong>🤖 Multi-Agent Analysis Results</strong>"
+            html += "</div>"
+        
         # Summary
         if 'summary' in obj.ai_feedback:
             html += f"<p><strong>Summary:</strong><br>{obj.ai_feedback['summary']}</p>"
         
+        # Multi-dimensional scores (NEW)
+        if 'detailed_analysis' in obj.ai_feedback:
+            analysis = obj.ai_feedback['detailed_analysis']
+            html += "<p><strong>📊 Detailed Scores:</strong><br>"
+            html += "<ul style='list-style: none; padding-left: 0;'>"
+            
+            if 'technical_score' in analysis:
+                html += f"<li>🔧 Technical: <strong>{analysis['technical_score']}/100</strong></li>"
+            if 'experience_score' in analysis:
+                html += f"<li>💼 Experience: <strong>{analysis['experience_score']}/100</strong></li>"
+            if 'culture_score' in analysis:
+                html += f"<li>🤝 Culture Fit: <strong>{analysis['culture_score']}/100</strong></li>"
+            
+            html += "</ul></p>"
+            
+            # Strengths
+            if 'strengths' in analysis and analysis['strengths']:
+                html += "<p><strong>✅ Strengths:</strong><br><ul>"
+                for strength in analysis['strengths']:
+                    html += f"<li>{strength}</li>"
+                html += "</ul></p>"
+        
+        # Confidence score (NEW)
+        if 'confidence_score' in obj.ai_feedback:
+            confidence = obj.ai_feedback['confidence_score']
+            confidence_pct = f"{confidence * 100:.0f}%"
+            color = "green" if confidence >= 0.8 else "orange" if confidence >= 0.6 else "red"
+            html += f"<p><strong>🎯 Confidence:</strong> <span style='color: {color}; font-weight: bold;'>{confidence_pct}</span></p>"
+        
         # Missing skills
         if 'missing_skills' in obj.ai_feedback and obj.ai_feedback['missing_skills']:
-            html += "<p><strong>Missing Skills:</strong><br>"
+            html += "<p><strong>❌ Missing Skills:</strong><br>"
             html += "<ul>"
             for skill in obj.ai_feedback['missing_skills']:
                 html += f"<li>{skill}</li>"
@@ -507,15 +746,131 @@ class ApplicationAdmin(admin.ModelAdmin):
         
         # Interview questions
         if 'interview_questions' in obj.ai_feedback and obj.ai_feedback['interview_questions']:
-            html += "<p><strong>Interview Questions:</strong><br>"
+            html += "<p><strong>❓ Interview Questions:</strong><br>"
             html += "<ol>"
             for question in obj.ai_feedback['interview_questions']:
                 html += f"<li>{question}</li>"
             html += "</ol></p>"
         
+        # Agent execution traces (NEW)
+        if 'agent_traces' in obj.ai_feedback and obj.ai_feedback['agent_traces']:
+            # Deduplicate traces (LangGraph's operator.add can create duplicates)
+            seen = set()
+            unique_traces = []
+            for trace in obj.ai_feedback['agent_traces']:
+                # Create unique key based on agent name and execution time
+                key = (trace.get('agent_name'), trace.get('execution_time_ms'))
+                if key not in seen:
+                    seen.add(key)
+                    unique_traces.append(trace)
+            
+            html += "<details style='margin-top: 15px;'>"
+            html += "<summary style='cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 15px; border-radius: 8px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>🔬 Agent Execution Traces (Click to expand)</summary>"
+            html += "<div style='margin-top: 10px; padding: 15px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 8px;'>"
+            
+            # Execution stats
+            if 'total_execution_time_ms' in obj.ai_feedback:
+                exec_time = obj.ai_feedback['total_execution_time_ms'] / 1000
+                html += f"<p style='background: white; padding: 8px 12px; border-radius: 6px; border-left: 4px solid #4CAF50;'><strong style='color: #333;'>⏱️ Total Execution Time:</strong> <span style='color: #2E7D32; font-weight: bold;'>{exec_time:.1f}s</span></p>"
+            
+            if 'agents_used' in obj.ai_feedback:
+                agents = ', '.join(obj.ai_feedback['agents_used'])
+                html += f"<p style='background: white; padding: 8px 12px; border-radius: 6px; border-left: 4px solid #2196F3;'><strong style='color: #333;'>🤖 Agents Used:</strong> <span style='color: #1565C0; font-weight: bold;'>{agents}</span></p>"
+            
+            # Individual traces with different colors for each agent
+            html += "<div style='margin-top: 10px;'>"
+            agent_colors = {
+                'AnalyzerAgent': '#FF6B6B',      # Coral red
+                'InterviewerAgent': '#4ECDC4',   # Turquoise
+                'RetrieverAgent': '#95E1D3',     # Mint green
+            }
+            
+            for i, trace in enumerate(unique_traces, 1):
+                agent_name = trace.get('agent_name', 'Unknown')
+                exec_time_ms = trace.get('execution_time_ms', 0)
+                reasoning = trace.get('reasoning_preview', 'No reasoning available')
+                
+                # Get color for this agent type
+                border_color = agent_colors.get(agent_name, '#9B59B6')  # Default purple
+                
+                html += f"<div style='background: white; padding: 12px 15px; margin-bottom: 10px; border-left: 5px solid {border_color}; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.08);'>"
+                html += f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>"
+                html += f"<strong style='color: {border_color}; font-size: 14px;'>[{i}] {agent_name}</strong>"
+                html += f"<span style='background: {border_color}; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold;'>{exec_time_ms}ms</span>"
+                html += "</div>"
+                html += f"<div style='color: #555; font-size: 13px; line-height: 1.5;'>{reasoning}</div>"
+                html += "</div>"
+            
+            html += "</div></div></details>"
+        
         html += "</div>"
         return format_html(html)
     ai_feedback_display.short_description = 'AI Feedback'
+    
+    def trigger_multiagent_analysis(self, request, queryset):
+        """
+        🤖 Trigger multi-agent AI analysis for selected applications (ASYNC).
+        
+        Uses the advanced multi-agent orchestration system with:
+        - RetrieverAgent (hybrid search)
+        - AnalyzerAgent (multi-dimensional scoring)
+        - InterviewerAgent (personalized questions)
+        
+        Runs asynchronously with real-time WebSocket progress updates.
+        """
+        from recruitment.tasks_multiagent import analyze_application_multiagent
+        from django.contrib import messages
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        
+        success_count = 0
+        error_count = 0
+        task_ids = []
+        
+        for application in queryset:
+            try:
+                # Check if candidate has resume text
+                if not application.candidate.resume_text_cache:
+                    messages.warning(
+                        request,
+                        f"Skipping {application.candidate.name}: No resume text available"
+                    )
+                    continue
+                
+                # Queue the async Celery task
+                task = analyze_application_multiagent.delay(application.id)
+                task_ids.append(task.id)
+                success_count += 1
+                
+                logger.info(f"Queued multi-agent analysis for application {application.id}, task {task.id}")
+                
+            except Exception as e:
+                error_count += 1
+                messages.error(
+                    request,
+                    f"❌ {application.candidate.name}: Failed to queue task - {str(e)}"
+                )
+        
+        # Show success message
+        if success_count > 0:
+            messages.success(
+                request,
+                f"🚀 Queued multi-agent analysis for {success_count} application(s)! "
+                f"Real-time updates will appear via WebSocket. Check the Applications list for results."
+            )
+            
+            # Redirect to changelist with task IDs for WebSocket monitoring
+            changelist_url = reverse('admin:recruitment_application_changelist')
+            task_ids_param = ','.join(task_ids)
+            return HttpResponseRedirect(f"{changelist_url}#tasks={task_ids_param}")
+        
+        if error_count > 0:
+            messages.warning(
+                request,
+                f"⚠️ {error_count} application(s) failed to queue"
+            )
+    
+    trigger_multiagent_analysis.short_description = "🤖 Analyze with Multi-Agent System"
     
     def trigger_ai_analysis_async(self, request, queryset):
         """Admin action to trigger AI analysis for selected applications (async)."""

@@ -229,6 +229,11 @@ CELERY_TASK_ROUTES = {
         'queue': 'medium_priority',
         'routing_key': 'medium_priority',
     },
+    # Multi-agent analysis (advanced, can be slow)
+    'recruitment.analyze_with_multiagent': {
+        'queue': 'medium_priority',
+        'routing_key': 'medium_priority',
+    },
     
     # Low priority: Maintenance tasks (can wait)
     'recruitment.tasks.cleanup_old_results': {

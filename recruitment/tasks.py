@@ -456,3 +456,153 @@ def backfill_embeddings(model_type='all', force=False):
         logger.error(f"Embedding backfill failed: {str(e)}")
         raise
 
+
+@shared_task(bind=True, name='recruitment.test_retriever_agent', max_retries=2, time_limit=120, soft_time_limit=100)
+def test_retriever_agent_async(self, job_id: int):
+    """
+    Asynchronously test the RetrieverAgent for a specific job.
+    
+    This task runs the RetrieverAgent to find matching candidates
+    and stores the results in cache for display in the admin.
+    
+    Args:
+        self: Task instance
+        job_id: ID of the JobPosting to test
+        
+    Returns:
+        dict: Results with candidates and execution stats
+    """
+    import os
+    from django.core.cache import cache
+    from recruitment.models import JobPosting
+    from django.core.cache import cache
+    
+    logger.info(f"[Task {self.request.id}] ========== Starting RetrieverAgent test for job {job_id} ==========")
+    
+    try:
+        # Get job first (before heavy imports)
+        logger.info(f"[Task {self.request.id}] Fetching job posting from database...")
+        job = JobPosting.objects.get(id=job_id)
+        logger.info(f"[Task {self.request.id}] Job found: '{job.title}'")
+        logger.info(f"[Task {self.request.id}] Job description length: {len(job.description)} characters")
+        
+        # Import agents (these might be slow)
+        logger.info(f"[Task {self.request.id}] Importing agent modules...")
+        from app.agents.retriever_agent import RetrieverAgent
+        from app.agents.state import AgentState
+        from langchain_ollama import ChatOllama
+        logger.info(f"[Task {self.request.id}] Agent modules imported successfully")
+        
+        # Initialize LLM
+        logger.info(f"[Task {self.request.id}] Initializing LLM...")
+        llm_model = os.getenv("OLLAMA_MODEL", "llama3.2")
+        llm_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        logger.info(f"[Task {self.request.id}] LLM Model: {llm_model}, URL: {llm_url}")
+        
+        llm = ChatOllama(
+            model=llm_model,
+            base_url=llm_url,
+            timeout=60  # Add timeout
+        )
+        logger.info(f"[Task {self.request.id}] LLM initialized successfully")
+        
+        # Initialize RetrieverAgent
+        logger.info(f"[Task {self.request.id}] Initializing RetrieverAgent...")
+        retriever = RetrieverAgent(llm)
+        logger.info(f"[Task {self.request.id}] RetrieverAgent initialized")
+        
+        # Create initial state
+        logger.info(f"[Task {self.request.id}] Creating initial agent state...")
+        initial_state = AgentState(
+            job_description=job.description,
+            job_id=job.id
+        )
+        logger.info(f"[Task {self.request.id}] Initial state created")
+        
+        # Run retrieval
+        logger.info(f"[Task {self.request.id}] ========== Calling RetrieverAgent (LLM will be invoked) ==========")
+        result_state = retriever(initial_state)
+        logger.info(f"[Task {self.request.id}] ========== RetrieverAgent completed ==========")
+        
+        # Check for errors
+        if result_state.error:
+            logger.error(f"[Task {self.request.id}] RetrieverAgent returned error: {result_state.error}")
+            results = {
+                'status': 'error',
+                'error': result_state.error,
+                'job_id': job_id,
+                'job_title': job.title
+            }
+        else:
+            logger.info(f"[Task {self.request.id}] Processing results...")
+            logger.info(f"[Task {self.request.id}] Total candidates retrieved: {len(result_state.retrieved_candidates)}")
+            
+            candidates_data = []
+            for i, candidate in enumerate(result_state.retrieved_candidates[:5], 1):
+                logger.info(f"[Task {self.request.id}]   #{i}: {candidate.name} (score: {candidate.similarity_score:.2%})")
+                candidates_data.append({
+                    'id': candidate.candidate_id,
+                    'name': candidate.name,
+                    'email': candidate.email,
+                    'similarity_score': candidate.similarity_score,
+                    'match_score': int(candidate.similarity_score * 100)
+                })
+            
+            # Get execution stats
+            tools_used = []
+            execution_time = 0
+            if result_state.agent_traces:
+                trace = result_state.agent_traces[-1]
+                tools_used = [tc.tool_name for tc in trace.tools_called]
+                execution_time = trace.execution_time_ms
+                logger.info(f"[Task {self.request.id}] Tools used: {', '.join(tools_used)}")
+                logger.info(f"[Task {self.request.id}] Execution time: {execution_time}ms")
+            
+            results = {
+                'status': 'success',
+                'job_id': job_id,
+                'job_title': job.title,
+                'candidates': candidates_data,
+                'candidate_count': len(candidates_data),
+                'tools_used': tools_used,
+                'execution_time_ms': execution_time,
+                'task_id': self.request.id
+            }
+        
+        # Store results in cache (expires in 1 hour)
+        cache_key = f'retriever_test_{job_id}'
+        logger.info(f"[Task {self.request.id}] Storing results in cache with key: {cache_key}")
+        cache.set(cache_key, results, 3600)
+        
+        logger.info(f"[Task {self.request.id}] ========== Task completed successfully ==========")
+        return results
+        
+    except Exception as e:
+        logger.error(f"[Task {self.request.id}] ========== EXCEPTION OCCURRED ==========")
+        logger.error(f"[Task {self.request.id}] Exception type: {type(e).__name__}")
+        logger.error(f"[Task {self.request.id}] Exception message: {str(e)}")
+        logger.exception(f"[Task {self.request.id}] Full traceback:")
+        
+        error_results = {
+            'status': 'error',
+            'error': str(e),
+            'job_id': job_id
+        }
+        cache_key = f'retriever_test_{job_id}'
+        cache.set(cache_key, error_results, 3600)
+        raise
+
+
+# Import multi-agent task (defined in separate file to avoid circular imports)
+from recruitment.tasks_multiagent import analyze_application_multiagent
+
+__all__ = [
+    'analyze_application_async',
+    'analyze_application_multiagent',
+    'send_application_status_email',
+    'batch_analyze_applications',
+    'generate_candidate_embedding_async',
+    'generate_job_embedding_async',
+    'backfill_embeddings',
+    'test_retriever_agent_async'
+]

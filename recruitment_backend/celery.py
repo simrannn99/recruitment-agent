@@ -21,6 +21,9 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # This will look for tasks.py in each app
 app.autodiscover_tasks()
 
+# Explicitly import multi-agent tasks (not auto-discovered because it's in tasks_multiagent.py)
+app.autodiscover_tasks(['recruitment'], related_name='tasks_multiagent')
+
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):

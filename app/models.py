@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 
 class ScreeningRequest(BaseModel):
@@ -25,3 +26,81 @@ class ScreeningResponse(BaseModel):
         max_length=3,
         description="Exactly 3 specific interview questions",
     )
+
+
+# ============================================
+# Multi-Agent Models
+# ============================================
+
+class AgentAnalysisRequest(BaseModel):
+    """Request model for multi-agent analysis."""
+    
+    job_description: str = Field(..., description="The job description text")
+    resume_text: Optional[str] = Field(None, description="Optional resume text for direct analysis")
+    candidate_id: Optional[int] = Field(None, description="Optional candidate ID from database")
+    job_id: Optional[int] = Field(None, description="Optional job ID from database")
+    use_retrieval: bool = Field(True, description="Whether to use retrieval agent (if no resume provided)")
+
+
+class ToolCallInfo(BaseModel):
+    """Information about a tool call made by an agent."""
+    
+    tool_name: str
+    execution_time_ms: Optional[int] = None
+    success: bool = True
+
+
+class AgentTraceInfo(BaseModel):
+    """Execution trace for a single agent."""
+    
+    agent_name: str
+    reasoning: str
+    tools_called: List[ToolCallInfo] = Field(default_factory=list)
+    execution_time_ms: int
+    timestamp: datetime
+
+
+class DetailedAnalysis(BaseModel):
+    """Detailed analysis results."""
+    
+    match_score: int = Field(ge=0, le=100)
+    technical_score: int = Field(ge=0, le=100)
+    experience_score: int = Field(ge=0, le=100)
+    culture_score: int = Field(ge=0, le=100)
+    summary: str
+    missing_skills: List[str]
+    strengths: List[str]
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+
+
+class CandidateMatchInfo(BaseModel):
+    """Information about a matched candidate."""
+    
+    candidate_id: int
+    name: str
+    email: str
+    similarity_score: float
+
+
+class AgentAnalysisResponse(BaseModel):
+    """Response model for multi-agent analysis."""
+    
+    # Core results (backward compatible with ScreeningResponse)
+    match_score: int = Field(ge=0, le=100)
+    summary: str
+    missing_skills: List[str]
+    interview_questions: List[str]
+    
+    # Enhanced multi-agent fields
+    detailed_analysis: Optional[DetailedAnalysis] = None
+    retrieved_candidates: List[CandidateMatchInfo] = Field(default_factory=list)
+    
+    # Execution metadata
+    agent_traces: List[AgentTraceInfo] = Field(default_factory=list)
+    total_execution_time_ms: int
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    
+    # Tool usage stats
+    total_tools_called: int = 0
+    agents_used: List[str] = Field(default_factory=list)
