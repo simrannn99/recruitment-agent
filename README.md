@@ -193,6 +193,26 @@ Logs from all services are collected by **Promtail** and sent to **Loki** for ce
 
 ---
 
+## 🔍 LangSmith Observability
+
+Track and debug LLM interactions with **LangSmith** tracing.
+
+**Setup:** Add to `.env`:
+```bash
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_api_key
+LANGCHAIN_PROJECT=recruitment-agent
+```
+
+**What's Traced:**
+- Single-LLM analysis (`/analyze`)
+- Multi-agent workflows (`/agent/analyze`)
+- Individual agent executions and tool calls
+
+**Access:** Visit [smith.langchain.com](https://smith.langchain.com/) to view traces, performance metrics, and debug LLM interactions.
+
+---
+
 ## 🛡️ Safety Guardrails Usage
 
 Safety guardrails are automatically integrated into all AI workflows. To see safety reports:

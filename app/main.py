@@ -3,6 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from dotenv import load_dotenv
 import os
+import logging
+
+# LangSmith imports for tracing
+from langsmith import traceable
+from langsmith import Client as LangSmithClient
 
 from app.models import (
     ScreeningRequest,
@@ -18,6 +23,21 @@ from app.screening_service import ResumeScreeningService
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Initialize LangSmith client (optional - graceful degradation if not configured)
+try:
+    if os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true":
+        langsmith_client = LangSmithClient()
+        logger.info("✓ LangSmith tracing enabled")
+    else:
+        langsmith_client = None
+        logger.info("LangSmith tracing disabled (set LANGCHAIN_TRACING_V2=true to enable)")
+except Exception as e:
+    langsmith_client = None
+    logger.warning(f"LangSmith initialization failed (tracing disabled): {e}")
 
 
 # Initialize FastAPI app
@@ -98,29 +118,39 @@ async def analyze_resume(request: ScreeningRequest) -> ScreeningResponse:
         - missing_skills: List of missing skills
         - interview_questions: 3 specific interview questions
     """
-    try:
-        result = await screening_service.analyze(
-            job_description=request.job_description, resume_text=request.resume_text
-        )
-        return result
-    except ConnectionError as e:
-        raise HTTPException(
-            status_code=503, 
-            detail=f"LLM service unavailable. Is Ollama running? Error: {str(e)}"
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=422, 
-            detail=f"Invalid response from LLM: {str(e)}"
-        )
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"ERROR in analyze_resume: {error_details}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error analyzing resume: {str(e)}"
-        )
+    # Add tracing metadata
+    from langsmith import trace
+    with trace(
+        name="ResumeScreeningService.analyze",
+        metadata={
+            "agent_type": "single-llm",
+            "llm_provider": os.getenv("LLM_PROVIDER", "ollama"),
+        }
+    ):
+        try:
+            result = await screening_service.analyze(
+                job_description=request.job_description, resume_text=request.resume_text
+            )
+            return result
+        except ConnectionError as e:
+            raise HTTPException(
+                status_code=503, 
+                detail=f"LLM service unavailable. Is Ollama running? Error: {str(e)}"
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=422, 
+                detail=f"Invalid response from LLM: {str(e)}"
+            )
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"ERROR in analyze_resume: {error_details}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error analyzing resume: {str(e)}"
+            )
+
 
 
 @app.post("/agent/analyze", response_model=AgentAnalysisResponse)
@@ -139,68 +169,80 @@ async def agent_analyze(request: AgentAnalysisRequest) -> AgentAnalysisResponse:
     Returns:
         AgentAnalysisResponse with comprehensive results and execution traces
     """
-    try:
-        orchestrator = get_orchestrator()
-        
-        # Run multi-agent workflow
-        result = await orchestrator.arun(
-            job_description=request.job_description,
-            resume_text=request.resume_text,
-            candidate_id=request.candidate_id,
-            job_id=request.job_id
-        )
-        
-        # Convert to response model
-        response = AgentAnalysisResponse(
-            match_score=result.match_score,
-            summary=result.summary,
-            missing_skills=result.missing_skills,
-            interview_questions=result.interview_questions,
-            detailed_analysis=DetailedAnalysis(**result.detailed_analysis.model_dump()) if result.detailed_analysis else None,
-            retrieved_candidates=[
-                CandidateMatchInfo(
-                    candidate_id=c.candidate_id,
-                    name=c.name,
-                    email=c.email,
-                    similarity_score=c.similarity_score
-                ) for c in result.retrieved_candidates
-            ],
-            agent_traces=[
-                AgentTraceInfo(
-                    agent_name=trace.agent_name,
-                    reasoning=trace.reasoning,
-                    tools_called=[
-                        ToolCallInfo(
-                            tool_name=tc.tool_name,
-                            execution_time_ms=tc.execution_time_ms,
-                            success=tc.error is None
-                        ) for tc in trace.tools_called
-                    ],
-                    execution_time_ms=trace.execution_time_ms,
-                    timestamp=trace.timestamp
-                ) for trace in result.agent_traces
-            ],
-            total_execution_time_ms=result.total_execution_time_ms,
-            confidence_score=result.confidence_score,
-            total_tools_called=result.total_tools_called,
-            agents_used=result.agents_used
-        )
-        
-        return response
-        
-    except ConnectionError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"LLM service unavailable: {str(e)}"
-        )
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"ERROR in agent_analyze: {error_details}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error in multi-agent analysis: {str(e)}"
-        )
+    # Add tracing metadata
+    from langsmith import trace
+    with trace(
+        name="RecruitmentOrchestrator.run",
+        metadata={
+            "agent_type": "multi-agent",
+            "llm_provider": os.getenv("LLM_PROVIDER", "ollama"),
+            "job_id": request.job_id,
+            "candidate_id": request.candidate_id,
+        }
+    ):
+        try:
+            orchestrator = get_orchestrator()
+            
+            # Run multi-agent workflow
+            result = await orchestrator.arun(
+                job_description=request.job_description,
+                resume_text=request.resume_text,
+                candidate_id=request.candidate_id,
+                job_id=request.job_id
+            )
+            
+            # Convert to response model
+            response = AgentAnalysisResponse(
+                match_score=result.match_score,
+                summary=result.summary,
+                missing_skills=result.missing_skills,
+                interview_questions=result.interview_questions,
+                detailed_analysis=DetailedAnalysis(**result.detailed_analysis.model_dump()) if result.detailed_analysis else None,
+                retrieved_candidates=[
+                    CandidateMatchInfo(
+                        candidate_id=c.candidate_id,
+                        name=c.name,
+                        email=c.email,
+                        similarity_score=c.similarity_score
+                    ) for c in result.retrieved_candidates
+                ],
+                agent_traces=[
+                    AgentTraceInfo(
+                        agent_name=trace.agent_name,
+                        reasoning=trace.reasoning,
+                        tools_called=[
+                            ToolCallInfo(
+                                tool_name=tc.tool_name,
+                                execution_time_ms=tc.execution_time_ms,
+                                success=tc.error is None
+                            ) for tc in trace.tools_called
+                        ],
+                        execution_time_ms=trace.execution_time_ms,
+                        timestamp=trace.timestamp
+                    ) for trace in result.agent_traces
+                ],
+                total_execution_time_ms=result.total_execution_time_ms,
+                confidence_score=result.confidence_score,
+                total_tools_called=result.total_tools_called,
+                agents_used=result.agents_used
+            )
+            
+            return response
+            
+        except ConnectionError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"LLM service unavailable: {str(e)}"
+            )
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"ERROR in agent_analyze: {error_details}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error in multi-agent analysis: {str(e)}"
+            )
+
 
 
 if __name__ == "__main__":

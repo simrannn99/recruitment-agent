@@ -113,7 +113,7 @@ class MultiAgentResponse(BaseModel):
     match_score: int
     summary: str
     missing_skills: List[str]
-    interview_questions: List[str]
+    interview_questions: List[Dict[str, Any]]  # Changed from List[str] to preserve rich format
     
     # Enhanced multi-agent fields
     detailed_analysis: Optional[AnalysisResult] = None

@@ -18,7 +18,7 @@ class ScreeningResponse(BaseModel):
     match_score: int = Field(..., ge=0, le=100, description="Match score (0-100)")
     summary: str = Field(..., description="Brief 2-sentence summary of candidate fit")
     missing_skills: List[str] = Field(default_factory=list, description="List of missing skills")
-    interview_questions: List[str] = Field(default_factory=list, description="3 specific interview questions")
+    interview_questions: List[Dict[str, Any]] = Field(default_factory=list, description="Interview questions with category, difficulty, and expected answers")
     safety_report: Optional[Dict[str, Any]] = Field(None, description="Safety guardrails report")
 
 
@@ -84,7 +84,7 @@ class AgentAnalysisResponse(BaseModel):
     match_score: int = Field(ge=0, le=100)
     summary: str
     missing_skills: List[str]
-    interview_questions: List[str]
+    interview_questions: List[Dict[str, Any]]  # Changed to preserve rich format
     
     # Enhanced multi-agent fields
     detailed_analysis: Optional[DetailedAnalysis] = None

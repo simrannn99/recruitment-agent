@@ -2853,6 +2853,45 @@ graph TB
     style Loki fill:#3498db,stroke:#2980b9,stroke-width:2px
 ```
 
+### LangSmith - LLM Observability
+
+**Purpose**: Production-grade observability for LLM and multi-agent workflows.
+
+**Features**:
+- **Trace Visualization**: Complete execution trees showing agent flows and LLM calls
+- **Performance Monitoring**: Track latency, token usage, and costs per interaction
+- **Debugging**: Inspect inputs, outputs, and errors at each workflow step
+- **Metadata Filtering**: Filter traces by `job_id`, `candidate_id`, `agent_type`, `llm_provider`
+
+**What's Traced**:
+- Single-LLM analysis (`ResumeScreeningService.analyze`)
+- Multi-agent workflows (`RecruitmentOrchestrator.run`, `RecruitmentOrchestrator.arun`)
+- Individual agent executions (RetrieverAgent, AnalyzerAgent, InterviewerAgent)
+- Tool calls with execution times and results
+
+**Configuration**:
+```bash
+# .env
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_langsmith_api_key
+LANGCHAIN_PROJECT=recruitment-agent
+```
+
+**Access**: https://smith.langchain.com/
+
+**Example Trace Hierarchy**:
+```
+RecruitmentOrchestrator.run
+├─ RetrieverAgent.execute
+│  └─ search_candidates (tool call)
+├─ AnalyzerAgent.execute
+│  └─ LLM Call (Ollama/OpenAI)
+└─ InterviewerAgent.execute
+   └─ LLM Call (Ollama/OpenAI)
+```
+
+---
+
 ### Components
 
 #### **1. Prometheus** (Metrics Collection & Storage)

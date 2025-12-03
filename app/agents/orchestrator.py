@@ -269,8 +269,16 @@ class RecruitmentOrchestrator:
             confidence = 0.0
             detailed_analysis = None
         
-        # Extract interview questions
-        interview_questions = [q.question for q in state.interview_questions]
+        # Convert interview questions from InterviewQuestion objects to dicts
+        interview_questions = [
+            {
+                "question": q.question,
+                "category": q.category,
+                "difficulty": q.difficulty,
+                "expected_answer_points": q.expected_answer_points
+            }
+            for q in state.interview_questions
+        ]
         
         # Get list of agents that were used
         agents_used = list(set([trace.agent_name for trace in state.agent_traces]))

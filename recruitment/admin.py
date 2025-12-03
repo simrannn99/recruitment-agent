@@ -747,10 +747,63 @@ class ApplicationAdmin(admin.ModelAdmin):
         # Interview questions
         if 'interview_questions' in obj.ai_feedback and obj.ai_feedback['interview_questions']:
             html += "<p><strong>❓ Interview Questions:</strong><br>"
-            html += "<ol>"
-            for question in obj.ai_feedback['interview_questions']:
-                html += f"<li>{question}</li>"
-            html += "</ol></p>"
+            html += "<div style='margin-top: 10px;'>"
+            for i, question in enumerate(obj.ai_feedback['interview_questions'], 1):
+                # Handle both string and dict formats
+                if isinstance(question, str):
+                    # Old format: just a string
+                    html += f"<div style='background: #3a3a3a; padding: 12px 15px; margin-bottom: 10px; border-left: 4px solid #667eea; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);'>"
+                    html += f"<strong style='color: #90caf9;'>{i}.</strong> <span style='color: #ffffff;'>{question}</span>"
+                    html += "</div>"
+                else:
+                    # New format: dict with category, difficulty, expected_answer_points
+                    question_text = question.get('question', 'No question text')
+                    category = question.get('category', 'general')
+                    difficulty = question.get('difficulty', 'medium')
+                    expected_points = question.get('expected_answer_points', [])
+                    
+                    # Bright badge colors for dark background
+                    category_colors = {
+                        'technical': '#2196F3',      # Bright blue
+                        'behavioral': '#9C27B0',     # Bright purple
+                        'situational': '#FF9800',    # Bright orange
+                        'general': '#757575'         # Medium grey
+                    }
+                    cat_bg = category_colors.get(category.lower(), '#757575')
+                    
+                    # Difficulty badge colors
+                    diff_colors = {
+                        'easy': '#4CAF50',      # Bright green
+                        'medium': '#FF9800',    # Bright orange
+                        'hard': '#F44336'       # Bright red
+                    }
+                    diff_bg = diff_colors.get(difficulty.lower(), '#757575')
+                    
+                    html += f"<div style='background: #3a3a3a; padding: 15px; margin-bottom: 12px; border-left: 4px solid {cat_bg}; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);'>"
+                    
+                    # Question header with badges
+                    html += "<div style='display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;'>"
+                    html += f"<strong style='color: #90caf9; font-size: 16px;'>{i}.</strong>"
+                    html += f"<span style='background: {cat_bg}; color: #ffffff; padding: 4px 12px; border-radius: 14px; font-size: 12px; font-weight: bold; text-transform: uppercase; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{category}</span>"
+                    html += f"<span style='background: {diff_bg}; color: #ffffff; padding: 4px 12px; border-radius: 14px; font-size: 12px; font-weight: bold; text-transform: uppercase; box-shadow: 0 2px 4px rgba(0,0,0,0.2);'>{difficulty}</span>"
+                    html += "</div>"
+                    
+                    # Question text
+                    html += f"<div style='color: #ffffff; font-size: 14px; line-height: 1.6; margin-bottom: 10px;'>{question_text}</div>"
+                    
+                    # Expected answer points (if available)
+                    if expected_points:
+                        html += "<details style='margin-top: 10px; background: #2c2c2c; padding: 10px; border-radius: 6px;' open>"
+                        html += "<summary style='cursor: pointer; color: #64B5F6; font-size: 13px; font-weight: 700; margin-bottom: 8px;'>💡 Expected Answer Points</summary>"
+                        html += "<ul style='margin: 8px 0 0 20px; padding: 0; list-style-type: disc;'>"
+                        for point in expected_points:
+                            html += f"<li style='margin-bottom: 6px; color: #ffffff; font-size: 13px; line-height: 1.5;'>{point}</li>"
+                        html += "</ul>"
+                        html += "</details>"
+                    
+                    html += "</div>"
+            
+            html += "</div></p>"
         
         # Agent execution traces (NEW)
         if 'agent_traces' in obj.ai_feedback and obj.ai_feedback['agent_traces']:
