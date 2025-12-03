@@ -40,13 +40,30 @@ A production-ready recruitment platform combining **Sentence Transformers** for 
 - **Real-time monitoring**: Flower dashboard for task tracking
 - **Horizontal scaling**: Distributed Celery workers
 
-### 🤖 **Multi-Agent Orchestration** ⭐ **NEW**
+### 🤖 **Multi-Agent Orchestration** ⭐
 - **LangGraph workflow**: Sophisticated multi-agent coordination
 - **Specialized agents**: Retriever, Analyzer, Interviewer
 - **Tool-calling**: Database queries, email generation, scheduling
 - **Hybrid search**: Vector + keyword retrieval with intelligent ranking
 - **Execution tracing**: Full visibility into agent decisions
 - **Multi-dimensional scoring**: Technical, experience, culture fit analysis
+
+### 🛡️ **Safety Guardrails** 🆕
+- **PII Detection**: Automatic detection of personally identifiable information (emails, phones, names, locations)
+  - Microsoft Presidio integration for enterprise-grade detection
+  - Regex fallback for offline operation
+- **Bias Detection**: Identifies potential bias in job descriptions and AI outputs
+  - Protected categories: age, gender, race, disability, religion, appearance
+  - Severity levels: low, medium, high
+- **Toxicity Filtering**: ML-based detection of toxic or inappropriate content
+  - Detoxify model with multi-dimensional scoring
+  - Configurable threshold (default: 0.7)
+- **Output Validation**: Ensures AI outputs meet quality standards
+  - Pydantic schema validation
+  - Content quality checks (no placeholders, repetition, generic content)
+- **Safety Reporting**: Visual safety reports in Django admin with dark theme
+  - Integrated into all AI workflows (screening, multi-agent analysis)
+  - Real-time safety issue detection and logging
 
 ---
 
@@ -73,6 +90,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Download spaCy model for PII detection
+python -m spacy download en_core_web_lg
 ```
 
 ### Deployment Options
@@ -148,36 +168,65 @@ The platform includes a **production-grade monitoring stack** with pre-configure
 
 Access at: **http://localhost/grafana** (login: `admin` / `admin`)
 
-**10 Real-time Panels:**
-1. **Request Rate** - HTTP requests/sec for Django & FastAPI
-2. **Response Time (p95)** - 95th percentile latencies
-3. **Celery Task Rate by State** - Success/Failure/Retry rates with task names
-4. **Celery Queue Length** - Pending tasks per queue
-5. **PostgreSQL Connections** - Active vs Max connections
-6. **PostgreSQL Transaction Rate** - Commits and rollbacks/sec
-7. **Django Error Rate** - Percentage of failed requests
-8. **Celery Workers** - Number of active workers
-9. **Database Size** - Current database size
-10. **Total Celery Tasks Processed** - Cumulative task count
+**Panels include:**
+- **System Health**: CPU, memory, disk usage
+- **Application Metrics**: Request rates, response times, error rates
+- **Database Performance**: Query latency, connection pool stats
+- **Celery Tasks**: Task throughput, queue lengths, worker status
+- **AI/ML Metrics**: Embedding generation rate, LLM analysis duration
+- **WebSocket Connections**: Active connections, message throughput
 
-**Features:**
-- ✅ Auto-refresh every 10 seconds
-- ✅ Auto-provisioned on startup
-- ✅ Prometheus & Loki datasources pre-configured
-- ✅ Metrics from Django, FastAPI, Celery, PostgreSQL, and RabbitMQ
+### Prometheus Metrics
 
-**Check Metrics Health:**
-- Prometheus targets: http://localhost/prometheus/targets
-- All targets should show "UP" status
+Access at: **http://localhost/prometheus**
+
+**Key metrics exported:**
+- Django application metrics (via `django-prometheus`)
+- PostgreSQL metrics (via `postgres_exporter`)
+- Celery metrics (via `celery-exporter`)
+- RabbitMQ metrics (via built-in exporter)
+- Custom AI/ML metrics (embedding generation, LLM calls)
+
+### Loki Log Aggregation
+
+Logs from all services are collected by **Promtail** and sent to **Loki** for centralized log aggregation. View logs in Grafana's Explore tab.
 
 ---
 
-## 🧪 Testing WebSocket Real-Time Updates
+## 🛡️ Safety Guardrails Usage
 
-1. Open the WebSocket test page: http://localhost:8001/ws-test/
-2. Create a new application in Django admin
-3. Watch real-time updates as the AI analysis completes
-4. Admin interface auto-refreshes when tasks finish
+Safety guardrails are automatically integrated into all AI workflows. To see safety reports:
+
+1. **Django Admin**: Navigate to Applications → Select an application → View "AI Analysis" section
+2. **Safety Report Display**: Shows PII findings, bias issues, toxicity scores, and validation errors
+3. **Multi-Agent Analysis**: Safety checks run automatically on all agent outputs
+
+### Example Safety Report
+
+```
+⚠️ Safety Guardrails Report
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Summary: 3 PII entities detected; 4 potential bias issues
+
+🔒 PII Detected (3 entities)
+  • PERSON (confidence: 85%)
+  • EMAIL_ADDRESS (confidence: 95%)
+  • PHONE_NUMBER (confidence: 88%)
+
+⚖️ Bias Detected (4 issues)
+  • Age: 'junior' (medium)
+  • Age: 'energetic' (medium)
+  • Gender: 'he' (high)
+  • Gender: 'his' (high)
+```
+
+### Configuration
+
+Safety guardrails can be configured in `app/guardrails/safety.py`:
+
+- **PII Mode**: `flag` (detect only) or `redact` (replace with placeholders)
+- **Toxicity Threshold**: Default 0.7 (0.0-1.0 scale)
+- **LLM Bias Detection**: Optional LLM-based implicit bias detection (disabled by default for performance)
 
 ---
 
@@ -194,8 +243,10 @@ Access at: **http://localhost/grafana** (login: `admin` / `admin`)
 - **Sentence Transformers**: Embedding generation
 - **Ollama** / **OpenAI**: LLM providers
 - **PyPDF2**: PDF text extraction
-- **LangGraph**: Multi-agent orchestration ⭐ **NEW**
-- **LangChain**: LLM framework and tool-calling ⭐ **NEW**
+- **LangGraph**: Multi-agent orchestration ⭐
+- **LangChain**: LLM framework and tool-calling ⭐
+- **Presidio**: PII detection 🆕
+- **Detoxify**: Toxicity filtering 🆕
 
 ### Infrastructure
 - **Docker & Docker Compose**: Containerization
@@ -206,19 +257,13 @@ Access at: **http://localhost/grafana** (login: `admin` / `admin`)
 
 ### Monitoring Stack
 - **Prometheus**: Metrics collection and time-series database
-- **Grafana**: Dashboards and visualization
+- **Grafana**: Visualization and dashboards
 - **Loki**: Log aggregation
 - **Promtail**: Log shipping
-- **Exporters**: Celery, PostgreSQL metrics
+- **Exporters**: postgres_exporter, celery-exporter
 
 ---
 
 ## 📝 License
 
-MIT License - see LICENSE file for details
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+This project is licensed under the MIT License.

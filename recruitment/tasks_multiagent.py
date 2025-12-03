@@ -137,8 +137,9 @@ def analyze_application_multiagent(self, application_id: int):
         
         # Update application with results
         logger.info(f"[MultiAgent Task {self.request.id}] Updating application in database...")
-        application.ai_score = result.match_score
-        application.ai_feedback = {
+        
+        # Prepare result dictionary
+        result_dict = {
             'summary': result.summary,
             'missing_skills': result.missing_skills,
             'interview_questions': result.interview_questions,
@@ -155,6 +156,36 @@ def analyze_application_multiagent(self, application_id: int):
                 for trace in result.agent_traces
             ]
         }
+        
+        # Run safety guardrails on multi-agent results
+        from app.guardrails.safety import SafetyGuardrails
+        
+        safety = SafetyGuardrails(
+            pii_mode="flag",
+            use_llm_bias=False,
+            llm=None,
+            toxicity_threshold=0.7
+        )
+        
+        # Validate and sanitize
+        sanitized_result, safety_report = safety.validate_and_sanitize(
+            result_dict,
+            schema_name='multiagent',
+            auto_redact=False
+        )
+        
+        # Log safety findings
+        if safety_report.has_issues:
+            logger.warning(
+                f"[MultiAgent Task {self.request.id}] Safety issues detected: {safety_report.summary()}"
+            )
+        
+        # Add safety report to results
+        sanitized_result['safety_report'] = safety_report.to_dict()
+        
+        # Save to database
+        application.ai_score = result.match_score
+        application.ai_feedback = sanitized_result
         application.save()
         logger.info(f"[MultiAgent Task {self.request.id}] Application updated successfully")
         logger.info(f"[MultiAgent Task {self.request.id}] Stored {len(result.agent_traces)} agent traces")

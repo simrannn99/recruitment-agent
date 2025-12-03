@@ -1,18 +1,30 @@
+"""
+Resume screening service using LLM with safety guardrails.
+"""
+
 import os
 import json
+import logging
+from typing import Dict, Any
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+
 from app.models import ScreeningRequest, ScreeningResponse
 from app.prompts import RESUME_SCREENING_PROMPT
+from app.guardrails.safety import SafetyGuardrails
+
+logger = logging.getLogger(__name__)
 
 
 class ResumeScreeningService:
-    """Service for screening resumes using LLM."""
+    """Service for screening resumes using LLM with safety guardrails."""
 
     def __init__(self):
-        """Initialize the screening service with LLM."""
+        """Initialize the screening service with LLM and safety guardrails."""
         llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
 
         if llm_provider == "ollama":
@@ -56,22 +68,31 @@ class ResumeScreeningService:
 
         # Create the chain
         self.chain = self.prompt_template | self.llm
+        
+        # Initialize safety guardrails
+        self.safety = SafetyGuardrails(
+            pii_mode="flag",  # Flag PII but don't auto-redact
+            use_llm_bias=False,  # Disable LLM bias detection for performance
+            llm=None,
+            toxicity_threshold=0.7
+        )
+        logger.info("ResumeScreeningService initialized with safety guardrails")
 
     async def analyze(
         self, job_description: str, resume_text: str
     ) -> ScreeningResponse:
         """
-        Analyze a resume against a job description.
+        Analyze a resume against a job description with safety checks.
 
         Args:
             job_description: The job description text
             resume_text: The resume/CV text
 
         Returns:
-            ScreeningResponse with structured evaluation
+            ScreeningResponse with structured evaluation and safety report
         """
         try:
-            # Get the raw response
+            # Get the raw response from LLM
             result = await self.chain.ainvoke(
                 {"job_description": job_description, "resume_text": resume_text}
             )
@@ -106,12 +127,26 @@ class ResumeScreeningService:
             # Parse JSON
             data = json.loads(content)
 
+            # Run safety checks
+            sanitized_data, safety_report = self.safety.validate_and_sanitize(
+                data,
+                schema_name='screening',
+                auto_redact=False  # Don't auto-redact, just flag
+            )
+            
+            # Log safety findings
+            if safety_report.has_issues:
+                logger.warning(f"Safety issues detected: {safety_report.summary()}")
+            
+            # Add safety report to response
+            sanitized_data['safety_report'] = safety_report.to_dict()
+
             # Validate and create response
-            return ScreeningResponse(**data)
+            return ScreeningResponse(**sanitized_data)
 
         except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse JSON response: {e}\nResponse: {content}")
+            raise ValueError(f"Failed to parse JSON response: {e}\\nResponse: {content}")
         except Exception as e:
             raise ValueError(
-                f"Failed to create ScreeningResponse: {e}\nData: {data if 'data' in locals() else content}"
+                f"Failed to create ScreeningResponse: {e}\\nData: {data if 'data' in locals() else content}"
             )

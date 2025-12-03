@@ -76,12 +76,13 @@ def analyze_application(application_id):
         
         logger.info(f"AI analysis complete. Score: {ai_result.get('match_score')}")
         
-        # 7. Update application with AI results
+        # 7. Update application with AI results (including safety report)
         application.ai_score = ai_result.get('match_score')
         application.ai_feedback = {
             'summary': ai_result.get('summary'),
             'missing_skills': ai_result.get('missing_skills', []),
-            'interview_questions': ai_result.get('interview_questions', [])
+            'interview_questions': ai_result.get('interview_questions', []),
+            'safety_report': ai_result.get('safety_report')  # Include safety guardrails report
         }
         application.save()
         

@@ -707,7 +707,7 @@ class ApplicationAdmin(admin.ModelAdmin):
         if 'summary' in obj.ai_feedback:
             html += f"<p><strong>Summary:</strong><br>{obj.ai_feedback['summary']}</p>"
         
-        # Multi-dimensional scores (NEW)
+        # Multi-dimensional scores 
         if 'detailed_analysis' in obj.ai_feedback:
             analysis = obj.ai_feedback['detailed_analysis']
             html += "<p><strong>📊 Detailed Scores:</strong><br>"
@@ -802,6 +802,42 @@ class ApplicationAdmin(admin.ModelAdmin):
                 html += "</div>"
             
             html += "</div></div></details>"
+
+        # Safety Guardrails Report
+        if 'safety_report' in obj.ai_feedback and obj.ai_feedback['safety_report']:
+            safety = obj.ai_feedback['safety_report']
+            has_issues = safety.get('has_issues', False)
+            
+            # Determine border color
+            border_color = '#e74c3c' if has_issues else '#27ae60'
+            icon = '⚠️' if has_issues else '✅'
+            
+            html += f"""
+            <div style='margin-top: 20px; padding: 15px; background: #2c3e50; border-left: 5px solid {border_color}; border-radius: 8px;'>
+                <h3 style='color: {border_color}; margin: 0 0 10px 0;'>{icon} Safety Guardrails Report</h3>
+                <p style='color: #ecf0f1;'><strong>Summary:</strong> {safety.get('summary', 'No issues detected')}</p>
+            """
+            
+            # PII Findings
+            pii_findings = safety.get('pii_findings', [])
+            if pii_findings:
+                html += f"<div style='margin-top: 10px; padding: 10px; background: #34495e; border-left: 3px solid #e74c3c; border-radius: 4px;'>"
+                html += f"<strong style='color: #e74c3c;'>🔒 PII Detected ({len(pii_findings)} entities)</strong><ul style='color: #ecf0f1;'>"
+                for pii in pii_findings[:5]:
+                    html += f"<li>{pii.get('entity_type', 'UNKNOWN')} (confidence: {pii.get('score', 0):.0%})</li>"
+                html += "</ul></div>"
+            
+            # Bias Findings
+            bias_findings = safety.get('bias_findings', [])
+            if bias_findings:
+                html += f"<div style='margin-top: 10px; padding: 10px; background: #34495e; border-left: 3px solid #f39c12; border-radius: 4px;'>"
+                html += f"<strong style='color: #f39c12;'>⚖️ Bias Detected ({len(bias_findings)} issues)</strong><ul style='color: #ecf0f1;'>"
+                for bias in bias_findings[:5]:
+                    html += f"<li><strong>{bias.get('category', 'unknown').title()}</strong>: '{bias.get('keyword', '')}' ({bias.get('severity', 'unknown')})</li>"
+                html += "</ul></div>"
+            
+            html += "</div>"
+        
         
         html += "</div>"
         return format_html(html)

@@ -833,6 +833,451 @@ class ScreeningResponse(BaseModel):
 
 ---
 
+
+---
+
+## Safety Guardrails
+
+### Overview
+
+The platform implements comprehensive AI safety guardrails to ensure responsible AI usage, detect potential issues, and maintain compliance with data protection regulations.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Safety Guardrails Pipeline                    │
+└─────────────────────────────────────────────────────────────────┘
+
+Input (Job Description / Resume / AI Output)
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │  Safety Orchestrator  │
+        │  (safety.py)          │
+        └───────────┬───────────┘
+                    │
+        ┌───────────┼───────────┬───────────┬──────────────┐
+        │           │           │           │              │
+        ▼           ▼           ▼           ▼              ▼
+   ┌────────┐ ┌─────────┐ ┌─────────┐ ┌──────────┐ ┌──────────┐
+   │  PII   │ │  Bias   │ │Toxicity │ │  Output  │ │ Content  │
+   │Detector│ │Detector │ │ Filter  │ │Validator │ │ Quality  │
+   └────┬───┘ └────┬────┘ └────┬────┘ └────┬─────┘ └────┬─────┘
+        │          │           │           │            │
+        └──────────┴───────────┴───────────┴────────────┘
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │  Safety Report   │
+                    │  - PII Findings  │
+                    │  - Bias Issues   │
+                    │  - Toxicity Score│
+                    │  - Validation    │
+                    └──────────────────┘
+```
+
+### Core Components
+
+#### 1. PII Detector (`app/guardrails/pii_detector.py`)
+
+**Purpose**: Detect and optionally redact personally identifiable information
+
+**Technology**:
+- **Primary**: Microsoft Presidio Analyzer (enterprise-grade)
+- **Fallback**: Regex-based detection for offline operation
+
+**Detected Entities**:
+- Email addresses
+- Phone numbers
+- Names (PERSON)
+- Locations
+- Credit card numbers
+- IP addresses
+- URLs
+
+**Implementation**:
+```python
+class PIIDetector:
+    def __init__(self):
+        self.analyzer = AnalyzerEngine()  # Presidio
+        self.anonymizer = AnonymizerEngine()
+        
+    def detect_pii(self, text: str) -> List[PIIFinding]:
+        """Detect PII entities in text."""
+        results = self.analyzer.analyze(
+            text=text,
+            language='en',
+            entities=["EMAIL_ADDRESS", "PHONE_NUMBER", "PERSON", ...]
+        )
+        return [PIIFinding(...) for r in results]
+    
+    def redact_pii(self, text: str) -> str:
+        """Replace PII with placeholders."""
+        return self.anonymizer.anonymize(text, ...)
+```
+
+**Features**:
+- Confidence scoring (0.0-1.0)
+- Position tracking (start/end indices)
+- Two modes: `flag` (detect only) or `redact` (replace)
+- Dict-aware scanning for nested data structures
+
+#### 2. Bias Detector (`app/guardrails/bias_detector.py`)
+
+**Purpose**: Identify potential bias in job descriptions and AI outputs
+
+**Protected Categories**:
+- Age (e.g., "young", "junior", "senior", "energetic")
+- Gender (e.g., "he", "she", "his", "her", "chairman")
+- Race/Ethnicity (e.g., "native", "minority")
+- Disability (e.g., "able-bodied", "healthy")
+- Religion (e.g., "Christian", "Muslim")
+- Appearance (e.g., "attractive", "fit")
+
+**Severity Levels**:
+- **Low**: Indirect or context-dependent
+- **Medium**: Potentially problematic
+- **High**: Explicit bias indicators
+
+**Implementation**:
+```python
+class BiasDetector:
+    PROTECTED_ATTRIBUTES = {
+        'age': {
+            'keywords': ['young', 'junior', 'senior', 'energetic', ...],
+            'severity_map': {'young': 'medium', 'junior': 'medium', ...}
+        },
+        'gender': {
+            'keywords': ['he', 'she', 'his', 'her', 'chairman', ...],
+            'severity_map': {'he': 'high', 'she': 'high', ...}
+        },
+        ...
+    }
+    
+    def detect_bias(self, text: str) -> List[BiasFinding]:
+        """Detect bias keywords in text."""
+        findings = []
+        for category, config in self.PROTECTED_ATTRIBUTES.items():
+            for keyword in config['keywords']:
+                if keyword.lower() in text.lower():
+                    findings.append(BiasFinding(
+                        category=category,
+                        keyword=keyword,
+                        severity=config['severity_map'][keyword]
+                    ))
+        return findings
+```
+
+**Optional LLM-based Detection**:
+- Implicit bias detection using LLM analysis
+- Disabled by default for performance
+- Can be enabled with `use_llm_bias=True`
+
+#### 3. Toxicity Filter (`app/guardrails/toxicity_filter.py`)
+
+**Purpose**: Detect toxic, offensive, or inappropriate content
+
+**Technology**: Detoxify ML model (unitary/toxic-bert)
+
+**Dimensions**:
+- Toxicity (general)
+- Severe toxicity
+- Obscene language
+- Threats
+- Insults
+- Identity-based attacks
+
+**Implementation**:
+```python
+class ToxicityFilter:
+    def __init__(self, threshold: float = 0.7):
+        self.model = Detoxify('original')
+        self.threshold = threshold
+    
+    def check_toxicity(self, text: str) -> ToxicityScore:
+        """Analyze text for toxic content."""
+        scores = self.model.predict(text)
+        return ToxicityScore(
+            toxicity=scores['toxicity'],
+            severe_toxicity=scores['severe_toxicity'],
+            obscene=scores['obscene'],
+            threat=scores['threat'],
+            insult=scores['insult'],
+            identity_attack=scores['identity_attack'],
+            is_toxic=scores['toxicity'] > self.threshold
+        )
+```
+
+**Features**:
+- Configurable threshold (default: 0.7)
+- Multi-dimensional scoring
+- Graceful fallback if model unavailable
+- Dict-aware scanning
+
+#### 4. Output Validator (`app/guardrails/output_validator.py`)
+
+**Purpose**: Ensure AI outputs meet quality and structural requirements
+
+**Validation Types**:
+1. **Schema Validation**: Pydantic models for structure
+2. **Content Quality**: No placeholders, repetition, generic content
+3. **Length Validation**: Appropriate summary/question lengths
+4. **Count Validation**: Minimum number of questions/skills
+
+**Schemas**:
+```python
+class ScreeningResponseSchema(BaseModel):
+    match_score: int = Field(ge=0, le=100)
+    summary: str = Field(min_length=50)
+    missing_skills: List[str]
+    interview_questions: List[str] = Field(min_items=3)
+
+class MultiAgentAnalysisSchema(BaseModel):
+    summary: str
+    missing_skills: List[str]
+    interview_questions: List[str]
+    detailed_analysis: Optional[Dict]
+    confidence_score: float = Field(ge=0.0, le=1.0)
+```
+
+**Content Quality Checks**:
+```python
+def _check_content_quality(self, data: dict) -> List[str]:
+    errors = []
+    
+    # Check for placeholders
+    if any(placeholder in str(data).lower() 
+           for placeholder in ['todo', 'placeholder', 'tbd']):
+        errors.append("Contains placeholder text")
+    
+    # Check for repetition
+    if 'summary' in data:
+        words = data['summary'].split()
+        if len(words) != len(set(words)):
+            errors.append("Excessive repetition in summary")
+    
+    # Check for generic questions
+    if 'interview_questions' in data:
+        generic = ['tell me about yourself', 'what are your strengths']
+        if any(q.lower() in generic for q in data['interview_questions']):
+            errors.append("Contains generic interview questions")
+    
+    return errors
+```
+
+**Auto-Fix Capability**:
+- Attempts to fix common validation errors
+- Logs fixes for transparency
+- Returns both sanitized data and validation results
+
+#### 5. Safety Orchestrator (`app/guardrails/safety.py`)
+
+**Purpose**: Coordinate all safety checks and generate comprehensive reports
+
+**Main Method**:
+```python
+class SafetyGuardrails:
+    def __init__(self, pii_mode='flag', toxicity_threshold=0.7, use_llm_bias=False):
+        self.pii_detector = PIIDetector()
+        self.bias_detector = BiasDetector(use_llm=use_llm_bias)
+        self.toxicity_filter = ToxicityFilter(threshold=toxicity_threshold)
+        self.output_validator = OutputValidator()
+        self.pii_mode = pii_mode
+    
+    def validate_and_sanitize(
+        self, 
+        data: dict, 
+        schema_name: str = 'screening',
+        auto_redact: bool = False
+    ) -> Tuple[dict, SafetyReport]:
+        """Run all safety checks and return sanitized data + report."""
+        
+        # 1. PII Detection
+        pii_findings = self._scan_for_pii(data)
+        
+        # 2. Bias Detection
+        bias_findings = self._scan_for_bias(data)
+        
+        # 3. Toxicity Check
+        toxicity_score = self._check_toxicity(data)
+        
+        # 4. Output Validation
+        validation_result = self.output_validator.validate(data, schema_name)
+        
+        # 5. Auto-fix if requested
+        if not validation_result.is_valid:
+            data = self.output_validator.validate_and_fix(data, schema_name)
+        
+        # 6. Auto-redact PII if requested
+        if auto_redact and pii_findings:
+            data = self._redact_pii_in_dict(data)
+        
+        # 7. Generate comprehensive report
+        report = SafetyReport(
+            pii_findings=pii_findings,
+            bias_findings=bias_findings,
+            toxicity_score=toxicity_score,
+            validation_result=validation_result
+        )
+        
+        return data, report
+```
+
+### Integration Points
+
+#### 1. FastAPI Screening Service
+
+**File**: `app/screening_service.py`
+
+```python
+class ResumeScreeningService:
+    def __init__(self):
+        self.llm = ChatOllama(...)
+        self.safety = SafetyGuardrails(pii_mode="flag")
+    
+    async def analyze(self, job_description: str, resume_text: str):
+        # Get LLM response
+        result = await self.chain.ainvoke({...})
+        data = json.loads(result.content)
+        
+        # Run safety checks
+        sanitized_data, safety_report = self.safety.validate_and_sanitize(
+            data, 
+            schema_name='screening',
+            auto_redact=False
+        )
+        
+        # Add safety report to response
+        sanitized_data['safety_report'] = safety_report.to_dict()
+        
+        return ScreeningResponse(**sanitized_data)
+```
+
+#### 2. Multi-Agent Analysis
+
+**File**: `recruitment/tasks_multiagent.py`
+
+```python
+@shared_task
+def analyze_application_multiagent(self, application_id):
+    # Run multi-agent workflow
+    result = orchestrator.run(...)
+    
+    # Run safety checks on results
+    safety = SafetyGuardrails(pii_mode="flag")
+    sanitized_result, safety_report = safety.validate_and_sanitize(
+        result.model_dump(),
+        schema_name='multiagent'
+    )
+    
+    # Add safety report
+    sanitized_result['safety_report'] = safety_report.to_dict()
+    
+    # Save to database
+    application.ai_feedback = sanitized_result
+    application.save()
+```
+
+#### 3. Django Admin Display
+
+**File**: `recruitment/admin.py`
+
+Safety reports are automatically displayed in the Django admin interface with a dark theme:
+
+```python
+def ai_feedback_display(self, obj):
+    if 'safety_report' in obj.ai_feedback:
+        safety = obj.ai_feedback['safety_report']
+        html = f"""
+        <div style='background: #2c3e50; ...'>
+            <h3>⚠️ Safety Guardrails Report</h3>
+            <p>Summary: {safety.get('summary')}</p>
+            
+            <!-- PII Findings -->
+            <div>🔒 PII Detected ({len(pii_findings)} entities)</div>
+            
+            <!-- Bias Findings -->
+            <div>⚖️ Bias Detected ({len(bias_findings)} issues)</div>
+        </div>
+        """
+        return format_html(html)
+```
+
+### Safety Report Structure
+
+```python
+class SafetyReport(BaseModel):
+    pii_findings: List[PIIFinding]
+    bias_findings: List[BiasFinding]
+    toxicity_score: Optional[ToxicityScore]
+    validation_result: ValidationResult
+    
+    @property
+    def has_issues(self) -> bool:
+        return (len(self.pii_findings) > 0 or 
+                len(self.bias_findings) > 0 or
+                (self.toxicity_score and self.toxicity_score.is_toxic) or
+                not self.validation_result.is_valid)
+    
+    @property
+    def has_critical_issues(self) -> bool:
+        return (any(f.severity == 'high' for f in self.bias_findings) or
+                (self.toxicity_score and self.toxicity_score.toxicity > 0.9))
+    
+    def summary(self) -> str:
+        parts = []
+        if self.pii_findings:
+            parts.append(f"{len(self.pii_findings)} PII entities detected")
+        if self.bias_findings:
+            parts.append(f"{len(self.bias_findings)} potential bias issues")
+        if self.toxicity_score and self.toxicity_score.is_toxic:
+            parts.append("toxic content detected")
+        if not self.validation_result.is_valid:
+            parts.append(f"{len(self.validation_result.errors)} validation errors")
+        return "; ".join(parts) if parts else "No issues detected"
+```
+
+### Configuration
+
+**Environment Variables**:
+```bash
+# PII Detection
+PII_MODE=flag  # or 'redact'
+
+# Toxicity Filtering
+TOXICITY_THRESHOLD=0.7  # 0.0-1.0
+
+# Bias Detection
+USE_LLM_BIAS=false  # Enable LLM-based implicit bias detection
+```
+
+**Code Configuration**:
+```python
+safety = SafetyGuardrails(
+    pii_mode="flag",           # "flag" or "redact"
+    toxicity_threshold=0.7,    # 0.0-1.0
+    use_llm_bias=False,        # Enable LLM bias detection
+    llm=None                   # Optional LLM for bias detection
+)
+```
+
+### Performance Considerations
+
+- **PII Detection**: ~50-100ms per document (Presidio)
+- **Bias Detection**: ~10-20ms per document (keyword-based)
+- **Toxicity Filtering**: ~100-200ms per document (Detoxify model)
+- **Output Validation**: ~5-10ms per document (Pydantic)
+- **Total Overhead**: ~200-400ms per analysis
+
+**Optimization Strategies**:
+- Lazy loading of ML models
+- Caching of safety results
+- Async processing for non-blocking operations
+- Optional LLM bias detection (disabled by default)
+
+---
+
 ## WebSocket Real-Time Updates
 
 ### Overview
@@ -1274,6 +1719,455 @@ Features:
 3. **Progress Tracking**: Real-time progress bars for long-running tasks
 4. **Notifications**: Browser push notifications for completed tasks
 5. **Admin Dashboard**: Live task monitoring dashboard
+
+---
+
+## Multi-Agent Orchestration System
+
+### Overview
+
+The platform implements a **sophisticated multi-agent system** for comprehensive candidate evaluation, combining specialized AI agents that work together to provide deep insights into candidate-job fit. This system goes beyond simple resume matching to provide skill gap analysis, interview preparation, and detailed candidate assessments.
+
+### Agent Architecture
+
+```mermaid
+graph TB
+    Orchestrator[RecruitmentOrchestrator] --> Retriever[RetrieverAgent]
+    Orchestrator --> Analyzer[AnalyzerAgent]
+    Orchestrator --> Interviewer[InterviewerAgent]
+    
+    Retriever --> VectorDB[(Vector Database)]
+    Analyzer --> LLM[LLM Provider]
+    Interviewer --> LLM
+    
+    Retriever --> State[Shared AgentState]
+    Analyzer --> State
+    Interviewer --> State
+    
+    State --> Results[Final Analysis]
+    
+    style Orchestrator fill:#3498db,stroke:#2980b9,stroke-width:3px
+    style Retriever fill:#2ecc71,stroke:#27ae60
+    style Analyzer fill:#e74c3c,stroke:#c0392b
+    style Interviewer fill:#9b59b6,stroke:#8e44ad
+    style State fill:#f39c12,stroke:#e67e22
+```
+
+### Agent Responsibilities
+
+#### 1. **RetrieverAgent** 🔍
+**Purpose**: Find matching candidates using **hybrid search** (keyword + semantic vector search)
+
+**Capabilities**:
+- **Semantic vector search** using pgvector for finding similar candidates
+- **Keyword-based search** for exact skill matching (e.g., "Python", "Django")
+- **Hybrid ranking** combining both approaches for best results
+- Ranking candidates by similarity score (0-100%)
+- Filtering by minimum similarity threshold
+- Caching results for performance
+
+**Tools**:
+- `search_candidates_by_skills`: Keyword-based search (SQL LIKE/ICONTAINS)
+- `vector_search_candidates`: Semantic similarity search (pgvector cosine distance)
+- `get_candidate_by_id`: Fetch full candidate information
+
+**Hybrid Search Strategy**:
+The RetrieverAgent intelligently combines both search methods:
+1. **Keyword search** for hard requirements (specific technologies, certifications)
+2. **Vector search** for soft skills and experience matching
+3. **Result fusion** to provide comprehensive candidate list
+
+**Output**:
+```python
+{
+    "retrieved_candidates": [
+        {
+            "candidate_id": 5,
+            "name": "Alice Johnson",
+            "email": "alice@example.com",
+            "similarity_score": 0.92,  # 92% match (from vector search)
+            "resume_text": "..."
+        }
+    ],
+    "candidate_count": 10
+}
+```
+
+#### 2. **AnalyzerAgent** 📊
+**Purpose**: Deep analysis of candidate-job fit using LLM
+
+**Capabilities**:
+- Skill gap identification
+- Experience level assessment
+- Cultural fit evaluation
+- Strengths and weaknesses analysis
+- Match score calculation (0-100)
+
+**Tools**:
+- `analyze_candidate_fit`: LLM-powered analysis
+- `extract_skills`: Parse skills from resume
+- `compare_requirements`: Match job requirements
+
+**Output**:
+```python
+{
+    "match_score": 85,
+    "summary": "Strong Python and Django background...",
+    "strengths": ["5+ years Django", "PostgreSQL expert"],
+    "weaknesses": ["Limited cloud experience"],
+    "missing_skills": ["Kubernetes", "AWS"],
+    "recommendations": "Consider for senior role with cloud training"
+}
+```
+
+#### 3. **InterviewerAgent** 💬
+**Purpose**: Generate tailored interview questions
+
+**Capabilities**:
+- Technical question generation based on job requirements
+- Behavioral question creation
+- Skill-specific deep-dive questions
+- Difficulty level adaptation
+
+**Tools**:
+- `generate_interview_questions`: LLM-powered question generation
+- `assess_skill_level`: Determine question difficulty
+
+**Output**:
+```python
+{
+    "technical_questions": [
+        "Explain Django ORM query optimization techniques",
+        "How would you design a scalable microservices architecture?"
+    ],
+    "behavioral_questions": [
+        "Describe a time you optimized database performance",
+        "How do you handle technical debt in legacy codebases?"
+    ],
+    "skill_assessments": {
+        "Python": "Advanced",
+        "Django": "Expert",
+        "Kubernetes": "Beginner"
+    }
+}
+```
+
+### Orchestration Workflow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Django
+    participant Celery
+    participant Orchestrator
+    participant Retriever
+    participant Analyzer
+    participant Interviewer
+    participant LLM
+    participant DB
+
+    User->>Django: Create Application
+    Django->>Celery: Queue Multi-Agent Task
+    Django-->>User: Return Task ID
+    
+    Celery->>Orchestrator: Initialize (with shared LLM)
+    Orchestrator->>Retriever: Find matching candidates
+    Retriever->>DB: Vector similarity search
+    DB-->>Retriever: Top candidates
+    Retriever-->>Orchestrator: Candidate list
+    
+    Orchestrator->>Analyzer: Analyze candidate fit
+    Analyzer->>LLM: Structured analysis prompt
+    LLM-->>Analyzer: Match score + insights
+    Analyzer-->>Orchestrator: Analysis results
+    
+    Orchestrator->>Interviewer: Generate questions
+    Interviewer->>LLM: Question generation prompt
+    LLM-->>Interviewer: Interview questions
+    Interviewer-->>Orchestrator: Question list
+    
+    Orchestrator->>DB: Save comprehensive results
+    Orchestrator-->>Celery: Task complete
+    Celery-->>User: WebSocket notification
+```
+
+### Shared State Management
+
+All agents operate on a **shared `AgentState`** object that accumulates information as it flows through the pipeline:
+
+```python
+@dataclass
+class AgentState:
+    """Shared state passed between agents."""
+    
+    # Input
+    job_description: str
+    job_id: int
+    candidate_id: Optional[int] = None
+    resume_text: Optional[str] = None
+    
+    # Retriever outputs
+    retrieved_candidates: List[CandidateMatch] = field(default_factory=list)
+    
+    # Analyzer outputs
+    match_score: Optional[int] = None
+    analysis_summary: Optional[str] = None
+    strengths: List[str] = field(default_factory=list)
+    weaknesses: List[str] = field(default_factory=list)
+    missing_skills: List[str] = field(default_factory=list)
+    
+    # Interviewer outputs
+    interview_questions: List[str] = field(default_factory=list)
+    
+    # Execution metadata
+    agent_traces: List[AgentTrace] = field(default_factory=list)
+    error: Optional[str] = None
+```
+
+### Performance Optimizations
+
+#### 1. **Shared LLM Instance**
+
+**Problem**: Initializing LLM (ChatOllama/ChatOpenAI) on every task was slow (5-10 seconds)
+
+**Solution**: Initialize LLM once at module load time and reuse across all tasks
+
+**File**: `recruitment/tasks_multiagent.py`
+
+```python
+# Initialize LLM once at module load time (not per-task)
+logger.info("[Module Init] Initializing LLM for multi-agent tasks...")
+from app.agents.orchestrator import RecruitmentOrchestrator
+from langchain_ollama import ChatOllama
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+
+if LLM_PROVIDER == "ollama":
+    SHARED_LLM = ChatOllama(
+        model=os.getenv("OLLAMA_MODEL", "llama3.2"),
+        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        timeout=60
+    )
+else:
+    SHARED_LLM = ChatOpenAI(
+        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        temperature=0.3
+    )
+
+@shared_task(bind=True, time_limit=300, soft_time_limit=270)
+def analyze_application_multiagent(self, application_id: int):
+    # Use pre-initialized LLM (instant!)
+    orchestrator = RecruitmentOrchestrator(SHARED_LLM, progress_callback=...)
+```
+
+**Impact**:
+- ✅ **10x faster task startup** (from 10s to <1s)
+- ✅ **Reduced memory usage** (single LLM instance)
+- ✅ **Better resource utilization**
+
+#### 2. **Task Timeouts**
+
+Added comprehensive timeout handling to prevent hanging tasks:
+
+```python
+@shared_task(
+    bind=True,
+    name='recruitment.analyze_with_multiagent',
+    max_retries=2,
+    time_limit=300,        # Hard limit: 5 minutes
+    soft_time_limit=270    # Soft limit: 4.5 minutes (allows cleanup)
+)
+```
+
+#### 3. **Detailed Logging**
+
+Comprehensive logging at every step for debugging and monitoring:
+
+```python
+logger.info(f"[MultiAgent Task {self.request.id}] Starting for application {application_id}")
+logger.info(f"[MultiAgent Task {self.request.id}] Using pre-initialized {LLM_PROVIDER.upper()} LLM")
+logger.info(f"[MultiAgent Task {self.request.id}] Creating RecruitmentOrchestrator...")
+logger.info(f"[MultiAgent Task {self.request.id}] Orchestrator.run() starting...")
+```
+
+### Admin Integration
+
+#### Django Admin Actions
+
+**File**: `recruitment/admin.py`
+
+##### 1. **Test RetrieverAgent** (Synchronous)
+
+Allows testing the RetrieverAgent directly from the admin interface:
+
+```python
+def test_retriever_agent(self, request, queryset):
+    """Test RetrieverAgent for a specific job."""
+    job = queryset.first()
+    
+    # Initialize agent
+    llm = ChatOllama(...)
+    retriever = RetrieverAgent(llm)
+    
+    # Run retrieval
+    initial_state = AgentState(
+        job_description=job.description,
+        job_id=job.id
+    )
+    result_state = retriever(initial_state)
+    
+    # Display results in admin messages
+    messages.success(request, f"Found {len(result_state.retrieved_candidates)} candidates")
+    for candidate in result_state.retrieved_candidates[:5]:
+        messages.info(request, f"{candidate.name} - {candidate.similarity_score:.1%}")
+```
+
+**Usage**:
+1. Go to Job Postings list
+2. Select ONE job
+3. Choose "🔍 Test RetrieverAgent" from Actions dropdown
+4. Click "Go"
+5. Results appear at top of page
+
+**Output Example**:
+```
+✅ RetrieverAgent found 8 matching candidates for: Senior Python Developer
+ℹ️ #1: Alice Johnson - Match Score: 92/100 (Similarity: 92.3%)
+ℹ️ #2: Bob Smith - Match Score: 87/100 (Similarity: 87.1%)
+ℹ️ #3: Carol White - Match Score: 81/100 (Similarity: 81.5%)
+🔧 Tools used: search_candidates_by_job | Execution time: 1523ms
+```
+
+##### 2. **AI-Powered Candidate Matching** (Display Field)
+
+Shows top matching candidates directly on job posting detail page using vector search:
+
+```python
+def matching_candidates_display(self, obj):
+    """Display top matching candidates with similarity scores."""
+    if not obj.has_embedding:
+        return "⚠ Embedding generation in progress..."
+    
+    # Vector search
+    results = _vector_search_candidates(
+        query_embedding=obj.description_embedding,
+        limit=10,
+        similarity_threshold=0.4
+    )
+    
+    # Render beautiful HTML table
+    return format_html(...)  # Gradient badges, clickable links, etc.
+```
+
+**Features**:
+- ✅ **Real-time vector search** (instant results)
+- ✅ **Color-coded similarity scores** (green=excellent, orange=good, gray=potential)
+- ✅ **Clickable candidate links** (navigate to candidate detail)
+- ✅ **Responsive design** (hover effects, smooth transitions)
+
+### WebSocket Progress Updates
+
+Multi-agent tasks send real-time progress updates via WebSocket:
+
+```python
+def progress_callback(event_type: str, data: dict):
+    """Send WebSocket updates for each agent event."""
+    progress_map = {
+        'retriever_started': 10,
+        'retriever_completed': 30,
+        'analyzer_started': 35,
+        'analyzer_completed': 70,
+        'interviewer_started': 75,
+        'interviewer_completed': 95
+    }
+    
+    send_task_update(
+        task_id=self.request.id,
+        status='progress',
+        result={
+            'event': event_type,
+            'progress': progress_map.get(event_type, 50),
+            **data
+        }
+    )
+```
+
+**Client receives**:
+```javascript
+{
+    "type": "task_update",
+    "task_id": "abc-123",
+    "status": "progress",
+    "result": {
+        "event": "retriever_completed",
+        "progress": 30,
+        "candidates_found": 8
+    }
+}
+```
+
+### Error Handling & Resilience
+
+#### Retry Logic
+
+```python
+@shared_task(bind=True, max_retries=2)
+def analyze_application_multiagent(self, application_id: int):
+    try:
+        # ... agent execution ...
+    except Exception as e:
+        logger.error(f"Task failed: {e}")
+        # Retry with exponential backoff
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+```
+
+#### Graceful Degradation
+
+If one agent fails, the system continues with partial results:
+
+```python
+if result_state.error:
+    logger.warning(f"Agent error: {result_state.error}")
+    # Save partial results
+    application.ai_analysis_status = 'partial'
+else:
+    application.ai_analysis_status = 'completed'
+```
+
+### Monitoring & Observability
+
+#### Flower Dashboard
+
+Monitor multi-agent tasks in real-time:
+- **Task Status**: Pending, Started, Success, Failure
+- **Execution Time**: Track slow agents
+- **Retry Count**: Identify problematic tasks
+- **Worker Distribution**: Load balancing insights
+
+**Access**: http://localhost:5555
+
+#### Celery Logs
+
+Detailed execution logs for debugging:
+
+```
+[2025-12-02 14:46:40] INFO [MultiAgent Task be6e5934] Starting for application 67
+[2025-12-02 14:46:40] INFO [MultiAgent Task be6e5934] Using pre-initialized OLLAMA LLM
+[2025-12-02 14:46:40] INFO [MultiAgent Task be6e5934] Creating RecruitmentOrchestrator...
+[2025-12-02 14:46:41] INFO [MultiAgent Task be6e5934] Orchestrator.run() starting...
+[2025-12-02 14:46:42] INFO [MultiAgent Task be6e5934] RetrieverAgent found 8 candidates
+[2025-12-02 14:46:45] INFO [MultiAgent Task be6e5934] AnalyzerAgent completed (score: 85)
+[2025-12-02 14:46:48] INFO [MultiAgent Task be6e5934] InterviewerAgent generated 5 questions
+[2025-12-02 14:46:48] INFO [MultiAgent Task be6e5934] Task completed successfully
+```
+
+### Future Enhancements
+
+1. **Agent Chaining**: Dynamic agent selection based on job type
+2. **Parallel Execution**: Run Analyzer and Interviewer in parallel
+3. **Agent Caching**: Cache agent results for similar candidates
+4. **Custom Agents**: Allow users to define custom evaluation criteria
+5. **Agent Metrics**: Track individual agent performance and accuracy
 
 ---
 
