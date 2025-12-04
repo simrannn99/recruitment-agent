@@ -301,6 +301,7 @@ Safety guardrails can be configured in `app/guardrails/safety.py`:
 - **Loki**: Log aggregation
 - **Promtail**: Log shipping
 - **Exporters**: postgres_exporter, celery-exporter
+- **LangSmith**: AI/LLM observability and tracing
 
 ---
 
