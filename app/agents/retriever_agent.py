@@ -16,6 +16,11 @@ from langchain_core.output_parsers import JsonOutputParser
 from app.agents.base_agent import BaseAgent
 from app.agents.state import AgentState, CandidateMatch, ToolCall
 from app.agents.tools.database_tools import vector_search_tool, search_candidates_tool
+from app.agents.tools.analytics_tool import (
+    query_candidate_success_rate,
+    get_hiring_trends,
+    get_analytics_summary
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +39,14 @@ class RetrieverAgent(BaseAgent):
     def __init__(self, llm: BaseChatModel):
         super().__init__(llm, name="RetrieverAgent")
         
-        # Register tools
-        self.register_tools([vector_search_tool, search_candidates_tool])
+        # Register tools (database + analytics)
+        self.register_tools([
+            vector_search_tool,
+            search_candidates_tool,
+            query_candidate_success_rate,
+            get_hiring_trends,
+            get_analytics_summary
+        ])
         
         # Create prompt for query expansion
         self.query_expansion_prompt = ChatPromptTemplate.from_messages([

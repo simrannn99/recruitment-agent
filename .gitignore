@@ -51,3 +51,13 @@ local_settings.py
 
 # Files
 PROJECT_OVERVIEW.md
+recruitment/analytics/README.md
+
+# Analytics Runtime Files
+celerybeat-schedule*
+data/analytics.duckdb
+data/analytics.duckdb.wal
+data/parquet/
+models/*.pkl
+models/*.joblib
+

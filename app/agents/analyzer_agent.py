@@ -16,6 +16,10 @@ from langchain_core.output_parsers import JsonOutputParser
 
 from app.agents.base_agent import BaseAgent
 from app.agents.state import AgentState, AnalysisResult, ToolCall
+from app.agents.tools.analytics_tool import (
+    predict_candidate_success,
+    analyze_bias_patterns
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +34,18 @@ class AnalyzerAgent(BaseAgent):
     - Strength identification
     - Confidence scoring
     - Explainable reasoning
+    - ML-based success prediction
+    - Bias pattern analysis
     """
     
     def __init__(self, llm: BaseChatModel):
         super().__init__(llm, name="AnalyzerAgent")
+        
+        # Register analytics tools for ML predictions
+        self.register_tools([
+            predict_candidate_success,
+            analyze_bias_patterns
+        ])
         
         # Create analysis prompt
         self.analysis_prompt = ChatPromptTemplate.from_messages([

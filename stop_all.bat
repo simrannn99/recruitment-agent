@@ -13,7 +13,7 @@ echo      Docker services stopped!
 echo.
 
 REM Kill local services
-echo [2/2] Stopping local services (Django, FastAPI, Celery, Flower)...
+echo [2/2] Stopping local services (Django, FastAPI, Celery Worker, Celery Beat, Flower)...
 
 REM Kill Python processes (Django, FastAPI)
 taskkill /FI "WINDOWTITLE eq Django Backend*" /T /F 2>nul
@@ -21,6 +21,7 @@ taskkill /FI "WINDOWTITLE eq FastAPI Service*" /T /F 2>nul
 
 REM Kill Celery processes
 taskkill /FI "WINDOWTITLE eq Celery Worker*" /T /F 2>nul
+taskkill /FI "WINDOWTITLE eq Celery Beat*" /T /F 2>nul
 taskkill /FI "WINDOWTITLE eq Flower Dashboard*" /T /F 2>nul
 
 REM Fallback: kill any remaining celery processes

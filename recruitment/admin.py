@@ -13,7 +13,7 @@ class JobPostingAdmin(admin.ModelAdmin):
     list_display = ['title', 'created_at', 'application_count', 'embedding_status']
     list_filter = ['created_at', 'embedding_generated_at']
     search_fields = ['title', 'description']
-    readonly_fields = ['created_at', 'embedding_generated_at', 'test_retriever_button', 'matching_candidates_display']
+    readonly_fields = ['created_at', 'embedding_generated_at', 'matching_candidates_display']
     exclude = ['description_embedding']  # Hide embedding vector from form
     actions = ['test_retriever_agent', 'batch_analyze_job_applications', 'regenerate_embeddings']
     
