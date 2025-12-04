@@ -83,7 +83,6 @@ A production-ready recruitment platform combining **Sentence Transformers** for 
 
 ## 🚀 Quick Start
 
-See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for detailed technical documentation.
 
 ### Prerequisites
 
