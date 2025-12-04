@@ -277,10 +277,16 @@ Safety guardrails can be configured in `app/guardrails/safety.py`:
 - **Sentence Transformers**: Embedding generation
 - **Ollama** / **OpenAI**: LLM providers
 - **PyPDF2**: PDF text extraction
-- **LangGraph**: Multi-agent orchestration ⭐
-- **LangChain**: LLM framework and tool-calling ⭐
-- **Presidio**: PII detection 🆕
-- **Detoxify**: Toxicity filtering 🆕
+- **LangGraph**: Multi-agent orchestration 
+- **LangChain**: LLM framework and tool-calling 
+- **Presidio**: PII detection 
+- **Detoxify**: Toxicity filtering 
+- **scikit-learn**: ML models (Random Forest, Linear Regression) 
+
+### Analytics & Data
+- **DuckDB**: Local analytics warehouse ($0 cost) 
+- **Pandas**: Data manipulation and analysis 
+- **PyArrow**: Parquet file format support 
 
 ### Infrastructure
 - **Docker & Docker Compose**: Containerization
@@ -288,6 +294,7 @@ Safety guardrails can be configured in `app/guardrails/safety.py`:
 - **RabbitMQ**: Message broker
 - **Redis**: Result backend & WebSocket channel layer
 - **Flower**: Celery monitoring
+- **Celery Beat**: Scheduled task automation 
 
 ### Monitoring Stack
 - **Prometheus**: Metrics collection and time-series database
