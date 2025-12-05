@@ -20,6 +20,9 @@ from app.models import (
     CandidateMatchInfo
 )
 from app.screening_service import ResumeScreeningService
+from app.agents.session_manager import SessionManager
+from app.agents.conversational_agent import ConversationalAgent
+from app.agents.conversation_state import ConversationMessage, ConversationIntent
 
 # Load environment variables
 load_dotenv()
@@ -62,8 +65,13 @@ Instrumentator().instrument(app).expose(app)
 # Initialize the screening service
 screening_service = ResumeScreeningService()
 
+# Initialize session manager for conversations
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+session_manager = SessionManager(redis_url=redis_url, ttl_hours=24)
+
 # Initialize multi-agent orchestrator (lazy loading)
 _orchestrator = None
+_conversational_agent = None
 
 
 def get_orchestrator():
@@ -90,6 +98,31 @@ def get_orchestrator():
         _orchestrator = RecruitmentOrchestrator(llm)
     
     return _orchestrator
+
+
+def get_conversational_agent():
+    """Lazy load the conversational agent."""
+    global _conversational_agent
+    if _conversational_agent is None:
+        from langchain_ollama import ChatOllama
+        from langchain_openai import ChatOpenAI
+        
+        llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+        
+        if llm_provider == "ollama":
+            llm = ChatOllama(
+                model=os.getenv("OLLAMA_MODEL", "llama3.2"),
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+            )
+        else:
+            llm = ChatOpenAI(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                temperature=0.7  # Higher temperature for more conversational responses
+            )
+        
+        _conversational_agent = ConversationalAgent(llm)
+    
+    return _conversational_agent
 
 
 @app.get("/")
@@ -245,7 +278,22 @@ async def agent_analyze(request: AgentAnalysisRequest) -> AgentAnalysisResponse:
 
 
 
+# ============================================
+# Chat Endpoints
+# ============================================
+
+# Import and register chat router
+from app.chat_endpoints import create_chat_router
+from app.agents.conversation_state import ConversationContext
+
+# Create and include chat router
+chat_router = create_chat_router(session_manager, get_conversational_agent())
+app.include_router(chat_router, prefix="/api/ai")
+
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

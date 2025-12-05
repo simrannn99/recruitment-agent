@@ -79,8 +79,20 @@ def vector_search_candidates(
     """
     from recruitment.models import Candidate
     from recruitment.services.embedding_service import EmbeddingService
+    from django.db import connection
+    import asyncio
     
     try:
+        # Check if we're in an async context
+        try:
+            asyncio.get_running_loop()
+            # We're in async context, but this function is sync
+            # The caller should handle this, but we'll do our best
+            logger.warning("vector_search_candidates called from async context")
+        except RuntimeError:
+            # We're in sync context, all good
+            pass
+        
         # Generate embedding for job description
         embedding_service = EmbeddingService()
         query_embedding = embedding_service.generate_embedding(job_description)
@@ -89,29 +101,34 @@ def vector_search_candidates(
             logger.warning("Failed to generate embedding for job description")
             return []
         
-        # Perform vector search using pgvector
-        candidates = Candidate.objects.filter(
-            resume_embedding__isnull=False
-        ).annotate(
-            similarity=1 - (
-                Candidate.objects.raw(
-                    "SELECT resume_embedding <=> %s as distance FROM recruitment_candidate",
-                    [query_embedding]
-                )[0].distance
-            )
-        ).filter(
-            similarity__gte=min_similarity
-        ).order_by('-similarity')[:limit]
+        # Convert embedding to string format for PostgreSQL
+        embedding_str = '[' + ','.join(map(str, query_embedding)) + ']'
         
-        results = []
-        for candidate in candidates:
-            results.append({
-                'id': candidate.id,
-                'name': candidate.name,
-                'email': candidate.email,
-                'resume_text': candidate.resume_text_cache or '',
-                'similarity_score': float(candidate.similarity) if hasattr(candidate, 'similarity') else 0.0
-            })
+        # Perform vector search using raw SQL with proper casting
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    id,
+                    name,
+                    email,
+                    resume_text_cache,
+                    1 - (resume_embedding <=> %s::vector) AS similarity
+                FROM recruitment_candidate
+                WHERE resume_embedding IS NOT NULL
+                AND 1 - (resume_embedding <=> %s::vector) >= %s
+                ORDER BY resume_embedding <=> %s::vector
+                LIMIT %s
+            """, [embedding_str, embedding_str, min_similarity, embedding_str, limit])
+            
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    'id': row[0],
+                    'name': row[1],
+                    'email': row[2],
+                    'resume_text': row[3] or '',
+                    'similarity_score': float(row[4]) if row[4] else 0.0
+                })
         
         logger.info(f"Vector search found {len(results)} candidates")
         return results

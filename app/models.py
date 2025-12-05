@@ -98,3 +98,47 @@ class AgentAnalysisResponse(BaseModel):
     # Tool usage stats
     total_tools_called: int = 0
     agents_used: List[str] = Field(default_factory=list)
+
+
+# ============================================
+# Conversational Chat Models
+# ============================================
+
+class ChatStartRequest(BaseModel):
+    """Request to start a new conversation."""
+    user_id: Optional[str] = Field(None, description="Optional user identifier")
+
+
+class ChatStartResponse(BaseModel):
+    """Response with new session ID."""
+    session_id: str
+    message: str = "Conversation started! How can I help you today?"
+
+
+class ChatMessageRequest(BaseModel):
+    """Request to send a message in a conversation."""
+    session_id: str
+    message: str
+
+
+class ChatMessageResponse(BaseModel):
+    """Response to a chat message."""
+    session_id: str
+    message: str
+    intent: Optional[str] = None
+    confidence: Optional[float] = None
+    needs_clarification: bool = False
+    clarifying_questions: List[str] = Field(default_factory=list)
+    context: Dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime
+
+
+class ChatHistoryResponse(BaseModel):
+    """Response with conversation history."""
+    session_id: str
+    messages: List[Dict[str, Any]]
+    message_count: int
+    started_at: datetime
+    last_message_at: datetime
+    context: Optional[Dict[str, Any]] = None  # Include full session context
+

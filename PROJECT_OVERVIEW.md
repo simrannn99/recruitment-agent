@@ -140,6 +140,125 @@ graph TB
 
 ## System Architecture
 
+### Complete System Overview
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        User[User/Client]
+        Browser[Web Browser]
+    end
+    
+    subgraph "Reverse Proxy Layer"
+        Nginx[Nginx :80]
+    end
+    
+    subgraph "Application Layer"
+        Django[Django Backend :8001<br/>Admin + REST API]
+        FastAPI[FastAPI Service :8000<br/>AI/LLM Endpoints]
+        Daphne[Daphne ASGI Server<br/>WebSocket Support]
+    end
+    
+    subgraph "AI/ML Layer"
+        CA[Conversational Agent<br/>Chat Interface]
+        RA[Retriever Agent<br/>Candidate Search]
+        AA[Analyzer Agent<br/>Resume Analysis]
+        IA[Interviewer Agent<br/>Question Generation]
+        Orch[Orchestrator<br/>Multi-Agent Workflow]
+    end
+    
+    subgraph "LLM Providers"
+        Ollama[Ollama :11434<br/>llama3.2 Local]
+        OpenAI[OpenAI API<br/>gpt-4o-mini Cloud]
+    end
+    
+    subgraph "Data Layer"
+        Postgres[(PostgreSQL :5432<br/>+ pgvector)]
+        Redis[(Redis :6379<br/>Cache + Sessions)]
+    end
+    
+    subgraph "Message Queue Layer"
+        RabbitMQ[RabbitMQ :5672<br/>Task Queue]
+        Celery[Celery Workers<br/>Background Jobs]
+        Flower[Flower :5555<br/>Task Monitor]
+    end
+    
+    subgraph "ML Services"
+        Embeddings[Sentence Transformers<br/>all-MiniLM-L6-v2]
+    end
+    
+    subgraph "Monitoring Stack"
+        Prometheus[Prometheus :9090<br/>Metrics]
+        Grafana[Grafana :3000<br/>Dashboards]
+        Loki[Loki :3100<br/>Logs]
+    end
+    
+    %% Client connections
+    User -->|HTTP/WS| Browser
+    Browser -->|:80| Nginx
+    
+    %% Nginx routing
+    Nginx -->|/| Django
+    Nginx -->|/ws/| Daphne
+    Nginx -->|/api/ai/| FastAPI
+    Nginx -->|/rabbitmq/| RabbitMQ
+    
+    %% Django connections
+    Django -->|WebSocket| Daphne
+    Django -->|SQL| Postgres
+    Django -->|Cache| Redis
+    Django -->|Queue Tasks| RabbitMQ
+    Django -->|Metrics| Prometheus
+    
+    %% FastAPI connections
+    FastAPI -->|Chat API| CA
+    FastAPI -->|Analysis API| Orch
+    FastAPI -->|Metrics| Prometheus
+    
+    %% Conversational Agent flow
+    CA -->|Session Mgmt| Redis
+    CA -->|Search Intent| RA
+    CA -->|Analysis Intent| AA
+    
+    %% Orchestrator flow
+    Orch -->|Route| RA
+    Orch -->|Route| AA
+    Orch -->|Route| IA
+    
+    %% Agent connections
+    RA -->|Vector Search| Postgres
+    RA -->|Generate Embeddings| Embeddings
+    AA -->|LLM Analysis| Ollama
+    AA -->|LLM Analysis| OpenAI
+    IA -->|LLM Questions| Ollama
+    IA -->|LLM Questions| OpenAI
+    
+    %% Background processing
+    RabbitMQ -->|Consume| Celery
+    Celery -->|Embeddings| Embeddings
+    Celery -->|AI Analysis| FastAPI
+    Celery -->|Update DB| Postgres
+    Celery -->|WebSocket Notify| Daphne
+    Celery -->|Monitor| Flower
+    
+    %% Monitoring
+    Django -->|Logs| Loki
+    FastAPI -->|Logs| Loki
+    Celery -->|Logs| Loki
+    Loki -->|Query| Grafana
+    Prometheus -->|Query| Grafana
+    
+    %% Styling
+    style CA fill:#3498db,stroke:#2980b9,stroke-width:3px
+    style RA fill:#e74c3c,stroke:#c0392b,stroke-width:2px
+    style AA fill:#9b59b6,stroke:#8e44ad,stroke-width:2px
+    style IA fill:#f39c12,stroke:#d68910,stroke-width:2px
+    style Orch fill:#1abc9c,stroke:#16a085,stroke-width:2px
+    style Nginx fill:#2ecc71,stroke:#27ae60,stroke-width:3px
+    style Postgres fill:#34495e,stroke:#2c3e50,stroke-width:2px
+    style Redis fill:#e67e22,stroke:#d35400,stroke-width:2px
+```
+
 ### Microservices Overview
 
 ```
@@ -1275,6 +1394,421 @@ safety = SafetyGuardrails(
 - Caching of safety results
 - Async processing for non-blocking operations
 - Optional LLM bias detection (disabled by default)
+
+---
+
+---
+
+## Conversational AI Agent
+
+### Overview
+
+The Conversational AI Agent provides **natural language chat capabilities** for multi-turn dialogues about job matching and candidate search. It enables users to interact with the recruitment platform through conversational interfaces, making candidate discovery and analysis more intuitive and accessible.
+
+### Architecture
+
+```mermaid
+graph TB
+    User[User] -->|Chat Message| API[FastAPI Chat Endpoint]
+    API -->|Create/Get| SM[Session Manager]
+    SM -->|Redis/Memory| Cache[(Session Cache)]
+    
+    API -->|Process| CA[Conversational Agent]
+    CA -->|Classify| Intent[Intent Classification]
+    CA -->|Extract| Context[Context Extraction]
+    
+    Intent -->|job_search| RA[Retriever Agent]
+    Intent -->|candidate_analysis| AA[Analyzer Agent]
+    
+    RA -->|Query| DB[(PostgreSQL + pgvector)]
+    DB -->|Candidates| RA
+    
+    RA -->|Results| RG[Response Generator]
+    AA -->|Analysis| RG
+    
+    RG -->|Structured Response| API
+    API -->|JSON| User
+    
+    style CA fill:#3498db,stroke:#2980b9
+    style RA fill:#e74c3c,stroke:#c0392b
+    style AA fill:#9b59b6,stroke:#8e44ad
+    style SM fill:#2ecc71,stroke:#27ae60
+```
+
+### Core Components
+
+#### 1. Conversational Agent (`app/agents/conversational_agent.py`)
+
+**Purpose**: Orchestrates multi-turn conversations with intent classification and context management.
+
+**Key Features**:
+- **Intent Classification**: Identifies user intent (job_search, candidate_analysis, clarification_needed)
+- **Context Extraction**: Pulls skills, experience levels, and preferences from natural language
+- **Memory Management**: LangChain `ConversationBufferWindowMemory` for conversation history
+- **Response Generation**: Structured, factual responses based on real agent data
+
+**Intent Classification**:
+```python
+class ConversationalAgent(BaseAgent):
+    def classify_intent(
+        self,
+        message: str,
+        session: ConversationSession
+    ) -> IntentClassificationResult:
+        """Classify user intent from message."""
+        
+        # Extract context from message
+        result = self.intent_chain.invoke({
+            "message": message,
+            "history": session.get_history_text(n=5)
+        })
+        
+        return IntentClassificationResult(
+            intent=ConversationIntent(result['intent']),
+            confidence=result.get('confidence', 0.0),
+            context=result.get('context', {}),
+            needs_clarification=result.get('needs_clarification', False)
+        )
+```
+
+**Supported Intents**:
+- `job_search`: Find candidates for a job description
+- `candidate_analysis`: Analyze specific candidates
+- `clarification_needed`: Insufficient information
+- `general_query`: Platform questions
+- `conversation_end`: End conversation
+
+#### 2. Session Manager (`app/agents/session_manager.py`)
+
+**Purpose**: Manages conversation sessions with Redis-backed persistence.
+
+**Features**:
+- **Redis Primary Storage**: Production-grade session persistence
+- **In-Memory Fallback**: Graceful degradation if Redis unavailable
+- **TTL Management**: Configurable session expiration (default: 24 hours)
+- **Thread-Safe**: Concurrent session access handling
+
+**Session Lifecycle**:
+```python
+class SessionManager:
+    def create_session(self, user_id: Optional[str] = None) -> ConversationSession:
+        """Create new conversation session."""
+        session = ConversationSession(
+            session_id=str(uuid.uuid4()),
+            user_id=user_id,
+            started_at=datetime.now()
+        )
+        self.save_session(session)
+        return session
+    
+    def get_session(self, session_id: str) -> Optional[ConversationSession]:
+        """Retrieve session from Redis/memory."""
+        # Try Redis first
+        if self.redis_client:
+            data = self.redis_client.get(f"session:{session_id}")
+            if data:
+                return ConversationSession.from_dict(json.loads(data))
+        
+        # Fallback to in-memory
+        return self.sessions.get(session_id)
+```
+
+#### 3. Conversation State (`app/agents/conversation_state.py`)
+
+**Purpose**: Track conversation history, context, and user intent across turns.
+
+**Data Models**:
+```python
+class ConversationMessage(BaseModel):
+    """Single message in conversation."""
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: datetime
+    intent: Optional[ConversationIntent] = None
+
+class ConversationContext(BaseModel):
+    """Extracted context from conversation."""
+    job_requirements: Dict[str, Any] = {}
+    preferences: Dict[str, Any] = {}
+    search_results: List[Dict[str, Any]] = []
+    
+    def update(self, new_context: Dict[str, Any]):
+        """Merge new context with existing."""
+        for key, value in new_context.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+class ConversationSession(BaseModel):
+    """Complete conversation session."""
+    session_id: str
+    user_id: Optional[str]
+    messages: List[ConversationMessage] = []
+    context: ConversationContext = ConversationContext()
+    started_at: datetime
+    last_message_at: Optional[datetime] = None
+    message_count: int = 0
+```
+
+#### 4. Chat Endpoints (`app/chat_endpoints.py`)
+
+**Purpose**: FastAPI REST endpoints for chat interactions.
+
+**Endpoints**:
+
+**Start Conversation**:
+```http
+POST /api/ai/chat/start
+Content-Type: application/json
+
+{
+  "user_id": "user123"  // Optional
+}
+
+Response:
+{
+  "session_id": "abc-123-def",
+  "message": "Hello! I'm your AI recruitment assistant..."
+}
+```
+
+**Send Message**:
+```http
+POST /api/ai/chat/message
+Content-Type: application/json
+
+{
+  "session_id": "abc-123-def",
+  "message": "I'm looking for a senior Python developer with Django experience"
+}
+
+Response:
+{
+  "session_id": "abc-123-def",
+  "message": "Great! I found 5 candidates matching your requirements:\n\n1. **Frank Miller** (frank.miller@email.com)\n   Match score: 62%\n...",
+  "intent": "job_search",
+  "confidence": 0.95,
+  "needs_clarification": false,
+  "context": {
+    "job_requirements": {
+      "skills": ["Python", "Django"],
+      "experience": "senior"
+    }
+  },
+  "timestamp": "2025-12-05T11:32:18.643506"
+}
+```
+
+**Get History**:
+```http
+GET /api/ai/chat/history/{session_id}
+
+Response:
+{
+  "session_id": "abc-123-def",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I need a Python developer",
+      "timestamp": "2025-12-05T11:30:00",
+      "intent": "job_search"
+    },
+    {
+      "role": "assistant",
+      "content": "Great! I found 5 candidates...",
+      "timestamp": "2025-12-05T11:30:05"
+    }
+  ],
+  "message_count": 6,
+  "started_at": "2025-12-05T11:29:00",
+  "last_message_at": "2025-12-05T11:32:00"
+}
+```
+
+**End Conversation**:
+```http
+DELETE /api/ai/chat/{session_id}
+
+Response:
+{
+  "message": "Conversation ended successfully"
+}
+```
+
+### Agent Integration
+
+#### Async Context Handling
+
+**Challenge**: Django ORM doesn't work in async FastAPI contexts.
+
+**Solution**: `sync_to_async` wrapper for database operations.
+
+```python
+@router.post("/message")
+async def send_message(request: ChatMessageRequest):
+    # Classify intent (async-safe)
+    intent_result = conversational_agent.classify_intent(
+        message=request.message,
+        session=session
+    )
+    
+    if intent_result.intent == ConversationIntent.JOB_SEARCH:
+        # Wrap synchronous agent execution in async context
+        from asgiref.sync import sync_to_async
+        
+        def run_retriever():
+            retriever = RetrieverAgent(conversational_agent.llm)
+            return retriever.execute(state)
+        
+        state = await sync_to_async(run_retriever)()
+        
+        # Store real candidates in session
+        session.context.search_results = [
+            {
+                'candidate_id': c.candidate_id,
+                'name': c.name,
+                'email': c.email,
+                'similarity_score': c.similarity_score
+            }
+            for c in state.retrieved_candidates
+        ]
+```
+
+#### Hallucination Prevention
+
+**Problem**: LLMs tend to invent plausible-sounding candidate data.
+
+**Solution**: Structured response generation with real data only.
+
+```python
+def generate_response(
+    self,
+    message: str,
+    intent_result: IntentClassificationResult,
+    session: ConversationSession,
+    agent_results: Optional[Dict[str, Any]] = None
+) -> str:
+    """Generate response using ONLY real data from agent_results."""
+    
+    # If we have real candidates, format them directly
+    if agent_results and 'candidates' in agent_results:
+        candidates = agent_results['candidates']
+        
+        if not candidates:
+            return "I searched our database but couldn't find any candidates..."
+        
+        # Build response with REAL data
+        response = f"Great! I found {len(candidates)} candidates:\n\n"
+        
+        for i, candidate in enumerate(candidates[:5], 1):
+            name = candidate.get('name', 'Unknown')
+            email = candidate.get('email', 'N/A')
+            score = candidate.get('similarity_score', 0.0)
+            
+            response += f"{i}. **{name}** ({email})\n"
+            response += f"   Match score: {score:.0%}\n\n"
+        
+        return response
+```
+
+### Context Preservation
+
+**Feature**: Remember previous search results and candidate references across conversation turns.
+
+**Implementation**:
+```python
+# Step 1: Store search results in session
+session.context.search_results = [
+    {'candidate_id': 1, 'name': 'Frank Miller', ...},
+    {'candidate_id': 2, 'name': 'Alice Johnson', ...}
+]
+
+# Step 2: User asks "Tell me more about the first candidate"
+if intent_result.intent == ConversationIntent.CANDIDATE_ANALYSIS:
+    candidate_ref = request.message.lower()
+    
+    if 'first' in candidate_ref or '1' in candidate_ref:
+        candidate_data = session.context.search_results[0]
+        
+        # Analyze this specific candidate
+        analyzer = AnalyzerAgent(llm)
+        state = analyzer.execute(AgentState(
+            job_description=session.context.job_requirements,
+            resume_text=candidate_data['resume_text']
+        ))
+```
+
+### Testing
+
+**Test Script**: `tests/test_chat.py`
+
+**Test Flow**:
+1. Start conversation → Get session_id
+2. Send vague query → Agent asks for clarification
+3. Send specific query → Agent returns real candidates
+4. Ask about specific candidate → Agent provides analysis
+5. Get conversation history → Verify all messages stored
+6. End conversation → Session deleted
+
+**Example Output**:
+```
+1. Starting conversation...
+✓ Session started: abc-123-def
+
+2. Sending vague query...
+  User: I need developers
+  Bot: Let's narrow down the search. What type of developers...
+
+3. Sending specific query...
+  User: I'm looking for a senior Python developer with Django experience
+  Bot: Great! I found 5 candidates matching your requirements:
+
+1. **Frank Miller** (frank.miller@email.com)
+   Match score: 62%
+
+2. **Alice Johnson** (alice.johnson@email.com)
+   Match score: 52%
+...
+
+4. Asking about a candidate...
+  User: Tell me more about the first candidate
+  Bot: Here's a detailed analysis of **Frank Miller**:
+
+**Match Score:** 60/100
+**Technical Score:** 70/100
+**Experience Score:** 40/100
+
+**Strengths:**
+• Python
+• Django
+• PostgreSQL
+...
+```
+
+### Performance Considerations
+
+**Session Storage**:
+- **Redis**: O(1) lookup, ~1ms latency
+- **TTL**: Auto-expire after 24 hours
+- **Serialization**: JSON for portability
+
+**Intent Classification**:
+- **LLM Call**: ~200-500ms (Ollama local)
+- **Caching**: Consider caching common intents
+- **Batching**: Process multiple messages in parallel
+
+**Agent Execution**:
+- **Async Wrapper**: Prevents blocking FastAPI event loop
+- **Vector Search**: ~50-100ms for 10K candidates
+- **Analysis**: ~2-3s for LLM-powered analysis
+
+### Future Enhancements
+
+1. **Streaming Responses**: Server-Sent Events (SSE) for real-time typing indicators
+2. **Multi-Language Support**: i18n for global recruitment
+3. **Voice Interface**: Speech-to-text integration
+4. **Conversation Summarization**: Compress long conversations
+5. **Suggested Follow-ups**: Proactive question suggestions
+6. **Database Persistence**: Store conversations in PostgreSQL for analytics
 
 ---
 
