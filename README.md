@@ -65,6 +65,29 @@ A production-ready recruitment platform combining **Sentence Transformers** for 
   - Integrated into all AI workflows (screening, multi-agent analysis)
   - Real-time safety issue detection and logging
 
+### 💬 **Conversational AI Agent**
+- **Multi-Turn Conversations**: Context-aware dialogue with conversation history
+  - Remembers previous searches and candidate references
+  - Maintains job requirements across messages
+  - Intelligent context preservation
+- **Intent Classification**: Smart understanding of user requests
+  - LLM-based classification with structured output
+  - Keyword-based fallback for reliability
+  - Supports: job search, candidate analysis, interview questions, general queries
+- **Agent Orchestration**: Seamless integration with existing agents
+  - Routes to RetrieverAgent for candidate search
+  - Routes to AnalyzerAgent for detailed analysis
+  - Generates tailored interview questions
+- **Natural Language Interface**: Ask questions in plain English
+  - "Find Python developers with Django experience"
+  - "Tell me about the first candidate"
+  - "Get interview questions for these candidates"
+- **Session Management**: Persistent conversations with 1-hour TTL
+  - Redis-backed session storage
+  - Automatic session cleanup
+  - Session ID tracking in UI
+
+
 ### 📊 **DuckDB Analytics Warehouse** 🆕 💯 FREE
 - **Local Analytics Database**: DuckDB for fast analytical queries (no cloud required!)
 - **Automated ETL Pipeline**: 
@@ -152,17 +175,21 @@ With nginx reverse proxy:
 
 - **Main Application**: http://localhost
 - **Django Admin**: http://localhost/admin
+- **AI Chat Interface**: http://localhost:8001/admin/chat/ ⭐ **NEW**
 - **WebSocket Test**: http://localhost/ws-test
 - **FastAPI Docs**: http://localhost/api/ai/docs
 - **Multi-Agent Analysis**: http://localhost/api/ai/agent/analyze ⭐ **NEW**
+- **Chat API**: http://localhost/api/ai/chat ⭐ **NEW**
 - **RabbitMQ UI**: http://localhost/rabbitmq
 - **Health Check**: http://localhost/health
 
 Direct service access (specific paths):
 - **Django Admin**: http://localhost:8001/admin/
+- **AI Chat Interface**: http://localhost:8001/admin/chat/ ⭐ **NEW**
 - **Django WebSocket Test**: http://localhost:8001/ws-test/
 - **FastAPI Docs**: http://localhost:8000/docs
 - **FastAPI Agent Docs**: http://localhost:8000/agent/analyze ⭐ **NEW**
+- **FastAPI Chat API**: http://localhost:8000/api/ai/chat ⭐ **NEW**
 - **Flower Dashboard**: http://localhost:5555
 - **RabbitMQ Management**: http://localhost:15672
 
@@ -260,6 +287,58 @@ Safety guardrails can be configured in `app/guardrails/safety.py`:
 - **PII Mode**: `flag` (detect only) or `redact` (replace with placeholders)
 - **Toxicity Threshold**: Default 0.7 (0.0-1.0 scale)
 - **LLM Bias Detection**: Optional LLM-based implicit bias detection (disabled by default for performance)
+
+---
+
+## 💬 Conversational AI Agent Usage
+
+The AI Chat Interface provides a natural language interface to interact with the recruitment platform.
+
+### Accessing the Chat
+
+1. **Navigate to Django Admin**: http://localhost:8001/admin/
+2. **Click "Start Chat →"** button on the dashboard
+3. **Start chatting** with the AI assistant
+
+### Example Conversations
+
+**Candidate Search:**
+```
+You: I need a senior Python developer with Django experience
+AI: Great! I found 5 candidates matching your requirements:
+    1. Alice Johnson (alice.johnson@email.com) - Match score: 85%
+    2. Frank Miller (frank.miller@email.com) - Match score: 72%
+    ...
+```
+
+**Candidate Analysis:**
+```
+You: Tell me about the first candidate
+AI: Here's a detailed analysis of Alice Johnson:
+    Match Score: 85/100
+    Technical Score: 90/100
+    Strengths: 6 years Python, Django expert, PostgreSQL...
+    Interview Questions: [5 tailored questions]
+```
+
+**Interview Questions:**
+```
+You: Get interview questions for these candidates
+AI: Here are tailored interview questions for Alice Johnson:
+    1. Can you describe your experience with Django ORM optimization?
+    2. How have you implemented caching strategies in Django?
+    ...
+```
+
+### Chat API Endpoints
+
+For programmatic access:
+
+- **Start Session**: `POST /api/ai/chat/start`
+- **Send Message**: `POST /api/ai/chat/message`
+- **Get History**: `GET /api/ai/chat/history/{session_id}`
+
+See [CONVERSATIONAL_AI_IMPLEMENTATION.md](CONVERSATIONAL_AI_IMPLEMENTATION.md) for technical details.
 
 ---
 

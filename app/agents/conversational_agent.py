@@ -154,8 +154,21 @@ class ConversationalAgent(BaseAgent):
                 "history": history
             })
             
-            # Parse result
-            intent = ConversationIntent(result['intent'])
+            # Parse result and validate intent
+            intent_str = result.get('intent', 'clarification_needed')
+            
+            # Handle cases where LLM returns multiple intents separated by |
+            if '|' in intent_str:
+                # Take the first intent
+                intent_str = intent_str.split('|')[0].strip()
+                logger.warning(f"LLM returned multiple intents, using first: {intent_str}")
+            
+            # Validate and create intent enum
+            try:
+                intent = ConversationIntent(intent_str)
+            except ValueError:
+                logger.error(f"Invalid intent from LLM: {intent_str}, defaulting to clarification_needed")
+                intent = ConversationIntent.CLARIFICATION_NEEDED
             
             return IntentClassificationResult(
                 intent=intent,
@@ -227,35 +240,6 @@ class ConversationalAgent(BaseAgent):
                 
                 return response
             
-            # If we have analysis results
-            if agent_results and 'analysis' in agent_results:
-                analysis = agent_results['analysis']
-                candidate = agent_results.get('candidate', {})
-                
-                response = f"Here's a detailed analysis of **{candidate.get('name', 'the candidate')}**:\n\n"
-                response += f"**Match Score:** {analysis.get('match_score', 0)}/100\n"
-                response += f"**Technical Score:** {analysis.get('technical_score', 0)}/100\n"
-                response += f"**Experience Score:** {analysis.get('experience_score', 0)}/100\n\n"
-                
-                if analysis.get('summary'):
-                    response += f"**Summary:**\n{analysis['summary']}\n\n"
-                
-                if analysis.get('strengths'):
-                    response += "**Strengths:**\n"
-                    for strength in analysis['strengths'][:5]:
-                        response += f"• {strength}\n"
-                    response += "\n"
-                
-                if analysis.get('missing_skills'):
-                    response += "**Areas for Development:**\n"
-                    for skill in analysis['missing_skills'][:5]:
-                        response += f"• {skill}\n"
-                
-                return response
-            
-            # If there's an error in agent_results
-            if agent_results and 'error' in agent_results:
-                return f"I encountered an issue: {agent_results['error']}\n\nCould you please try rephrasing your request?"
             
             # Fallback: Use LLM for general responses (no agent data)
             history = session.get_history_text(n=5)

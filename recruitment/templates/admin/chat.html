@@ -1,0 +1,52 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<link rel="stylesheet" href="{% static 'admin/css/chat.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="chat-wrapper">
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="header-content">
+                <h2>🤖 AI Recruitment Assistant</h2>
+                <div class="session-info">
+                    <span class="session-label">Session:</span>
+                    <span class="session-id" id="session-id">Initializing...</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="chat-messages">
+            <div class="loading-indicator" id="loading">
+                <div class="spinner"></div>
+                <p>Starting conversation...</p>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    id="message-input" 
+                    placeholder="Ask me to find candidates, analyze resumes, or answer questions..."
+                    rows="1"
+                ></textarea>
+                <button id="send-btn" class="send-button" disabled>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M2 21L23 12L2 3V10L17 12L2 14V21Z" fill="currentColor"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="input-hint">
+                Press <kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> for new line
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const FASTAPI_URL = '{{ fastapi_url }}';
+</script>
+<script src="{% static 'admin/js/chat.js' %}"></script>
+{% endblock %}

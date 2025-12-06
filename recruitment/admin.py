@@ -6,6 +6,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Customize admin site
+admin.site.site_header = "Recruitment Platform Administration"
+admin.site.site_title = "Recruitment Admin"
+admin.site.index_title = "Welcome to Recruitment Platform"
+
 
 @admin.register(JobPosting)
 class JobPostingAdmin(admin.ModelAdmin):

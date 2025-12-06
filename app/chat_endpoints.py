@@ -84,11 +84,51 @@ def create_chat_router(
             )
             session.add_message(user_message)
             
+            # Import agents for integration (moved to top to avoid reference errors)
+            from app.agents.conversation_state import ConversationIntent
+            from app.agents.retriever_agent import RetrieverAgent
+            from app.agents.analyzer_agent import AnalyzerAgent
+            from app.agents.state import AgentState
+            
             # Classify intent
             intent_result = conversational_agent.classify_intent(
                 message=request.message,
                 session=session
             )
+            
+            # FALLBACK 1: Override intent if we detect candidate reference with search results
+            # This handles cases where LLM misclassifies "first candidate" as clarification_needed
+            message_lower = request.message.lower()
+            has_candidate_reference = any(word in message_lower for word in [
+                'first', 'second', 'third', 'fourth', 'fifth',
+                '1st', '2nd', '3rd', '4th', '5th',
+                'candidate 1', 'candidate 2', 'candidate 3'
+            ])
+            
+            # FALLBACK 2: Override if asking for interview questions
+            has_interview_request = any(phrase in message_lower for phrase in [
+                'interview question', 'questions for', 'what to ask', 'what should i ask',
+                'interview them', 'questions to ask', 'ask these candidates',
+                'generate questions', 'get questions'
+            ])
+            
+            # Override to candidate_analysis if:
+            # 1. We have search results AND
+            # 2. User is asking for interview questions or referencing candidates AND
+            # 3. Intent is either clarification_needed OR job_search (misclassified)
+            if (session.context.search_results and 
+                (has_candidate_reference or has_interview_request) and 
+                intent_result.intent in [ConversationIntent.CLARIFICATION_NEEDED, ConversationIntent.JOB_SEARCH]):
+                
+                logger.info(f"Overriding intent from {intent_result.intent.value} to candidate_analysis")
+                intent_result.intent = ConversationIntent.CANDIDATE_ANALYSIS
+                intent_result.confidence = 0.9
+                
+                # If asking for interview questions for multiple candidates, default to first
+                if has_interview_request and not has_candidate_reference:
+                    intent_result.context['candidate_references'] = ['first', 'all']
+            
+            logger.info(f"Intent: {intent_result.intent.value} (confidence: {intent_result.confidence})")
             
             # Update context
             session.context.update(intent_result.context)
@@ -99,11 +139,6 @@ def create_chat_router(
             if intent_result.needs_clarification:
                 response_text = conversational_agent.handle_clarification(intent_result)
             else:
-                # Import agents for integration
-                from app.agents.conversation_state import ConversationIntent
-                from app.agents.retriever_agent import RetrieverAgent
-                from app.agents.analyzer_agent import AnalyzerAgent
-                from app.agents.state import AgentState
                 
                 # Handle different intents
                 if intent_result.intent == ConversationIntent.JOB_SEARCH:
@@ -170,9 +205,16 @@ def create_chat_router(
                 
                 elif intent_result.intent == ConversationIntent.CANDIDATE_ANALYSIS:
                     # Check if we have candidates in context
-                    if session.context.search_results:
+                    if session.context.search_results and len(session.context.search_results) > 0:
+                        # Check if this is an interview question request
+                        message_lower = request.message.lower()
+                        is_interview_request = any(phrase in message_lower for phrase in [
+                            'interview question', 'questions for', 'what to ask', 'what should i ask'
+                        ])
+                        
                         # Try to identify which candidate they're asking about
                         candidate_ref = request.message.lower()
+                        candidate_data = None
                         
                         if 'first' in candidate_ref or '1' in candidate_ref:
                             candidate_data = session.context.search_results[0]
@@ -180,12 +222,23 @@ def create_chat_router(
                             candidate_data = session.context.search_results[1] if len(session.context.search_results) > 1 else None
                         elif 'third' in candidate_ref or '3' in candidate_ref:
                             candidate_data = session.context.search_results[2] if len(session.context.search_results) > 2 else None
-                        else:
-                            candidate_data = None
+                        elif is_interview_request and ('these' in candidate_ref or 'them' in candidate_ref or 'all' in candidate_ref):
+                            # Default to first candidate for "these candidates" or "all"
+                            candidate_data = session.context.search_results[0]
                         
                         if candidate_data:
                             # Get job description from context
-                            job_desc = session.context.job_requirements.get('description', 'the role')
+                            job_requirements = session.context.job_requirements
+                            skills = job_requirements.get('skills', [])
+                            experience = job_requirements.get('experience', '')
+                            
+                            # Build job description
+                            job_desc_parts = []
+                            if experience:
+                                job_desc_parts.append(f"{experience} level")
+                            if skills:
+                                job_desc_parts.append(f"with skills in {', '.join(skills)}")
+                            job_desc = " ".join(job_desc_parts) if job_desc_parts else "the role"
                             
                             # Create agent state for analysis
                             state = AgentState(
@@ -206,16 +259,17 @@ def create_chat_router(
                                         'experience_score': state.analysis.experience_score,
                                         'summary': state.analysis.summary,
                                         'strengths': state.analysis.strengths,
-                                        'missing_skills': state.analysis.missing_skills
+                                        'missing_skills': state.analysis.missing_skills,
+                                        'interview_questions': state.analysis.interview_questions if hasattr(state.analysis, 'interview_questions') else []
                                     }
                                 }
                         else:
                             agent_results = {
-                                'error': 'Could not identify which candidate you are referring to.'
+                                'error': f'Could not identify which candidate you are referring to. I found {len(session.context.search_results)} candidates from your previous search. Please specify "first candidate", "second candidate", etc.'
                             }
                     else:
                         agent_results = {
-                            'error': 'No candidates in context. Please search for candidates first.'
+                            'error': 'No candidates in context. Please search for candidates first by asking something like "Find Python developers" or "I need a senior engineer".'
                         }
                 
                 # Generate conversational response with real data

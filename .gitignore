@@ -52,6 +52,7 @@ local_settings.py
 # Files
 PROJECT_OVERVIEW.md
 recruitment/analytics/README.md
+CONVERSATIONAL_AI_IMPLEMENTATION.md
 
 # Analytics Runtime Files
 celerybeat-schedule*

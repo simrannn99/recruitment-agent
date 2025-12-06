@@ -20,8 +20,10 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from recruitment.views import search_views, websocket_views
+from recruitment import admin_views
 
 urlpatterns = [
+    path("admin/chat/", admin_views.chat_view, name="admin_chat"),
     path("admin/", admin.site.urls),
     
     # Prometheus Metrics (exposed at /metrics by django_prometheus)
