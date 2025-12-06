@@ -88,7 +88,7 @@ A production-ready recruitment platform combining **Sentence Transformers** for 
   - Session ID tracking in UI
 
 
-### 📊 **DuckDB Analytics Warehouse** 🆕 💯 FREE
+### 📊 **DuckDB Analytics Warehouse** 
 - **Local Analytics Database**: DuckDB for fast analytical queries (no cloud required!)
 - **Automated ETL Pipeline**: 
   - Incremental sync every 15 minutes
