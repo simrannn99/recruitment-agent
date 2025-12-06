@@ -175,21 +175,21 @@ With nginx reverse proxy:
 
 - **Main Application**: http://localhost
 - **Django Admin**: http://localhost/admin
-- **AI Chat Interface**: http://localhost:8001/admin/chat/ ⭐ **NEW**
+- **AI Chat Interface**: http://localhost:8001/admin/chat/
 - **WebSocket Test**: http://localhost/ws-test
 - **FastAPI Docs**: http://localhost/api/ai/docs
-- **Multi-Agent Analysis**: http://localhost/api/ai/agent/analyze ⭐ **NEW**
-- **Chat API**: http://localhost/api/ai/chat ⭐ **NEW**
+- **Multi-Agent Analysis**: http://localhost/api/ai/agent/analyze 
+- **Chat API**: http://localhost/api/ai/chat 
 - **RabbitMQ UI**: http://localhost/rabbitmq
 - **Health Check**: http://localhost/health
 
 Direct service access (specific paths):
 - **Django Admin**: http://localhost:8001/admin/
-- **AI Chat Interface**: http://localhost:8001/admin/chat/ ⭐ **NEW**
+- **AI Chat Interface**: http://localhost:8001/admin/chat/ 
 - **Django WebSocket Test**: http://localhost:8001/ws-test/
 - **FastAPI Docs**: http://localhost:8000/docs
-- **FastAPI Agent Docs**: http://localhost:8000/agent/analyze ⭐ **NEW**
-- **FastAPI Chat API**: http://localhost:8000/api/ai/chat ⭐ **NEW**
+- **FastAPI Agent Docs**: http://localhost:8000/agent/analyze 
+- **FastAPI Chat API**: http://localhost:8000/api/ai/chat
 - **Flower Dashboard**: http://localhost:5555
 - **RabbitMQ Management**: http://localhost:15672
 
