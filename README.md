@@ -40,7 +40,7 @@ A production-ready recruitment platform combining **Sentence Transformers** for 
 - **Real-time monitoring**: Flower dashboard for task tracking
 - **Horizontal scaling**: Distributed Celery workers
 
-### 🤖 **Multi-Agent Orchestration** ⭐
+### 🤖 **Multi-Agent Orchestration** 
 - **LangGraph workflow**: Sophisticated multi-agent coordination
 - **Specialized agents**: Retriever, Analyzer, Interviewer
 - **Tool-calling**: Database queries, email generation, scheduling
@@ -48,7 +48,7 @@ A production-ready recruitment platform combining **Sentence Transformers** for 
 - **Execution tracing**: Full visibility into agent decisions
 - **Multi-dimensional scoring**: Technical, experience, culture fit analysis
 
-### 🛡️ **Safety Guardrails** 🆕
+### 🛡️ **Safety Guardrails** 
 - **PII Detection**: Automatic detection of personally identifiable information (emails, phones, names, locations)
   - Microsoft Presidio integration for enterprise-grade detection
   - Regex fallback for offline operation
