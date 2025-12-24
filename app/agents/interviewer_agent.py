@@ -45,7 +45,9 @@ Generate interview questions that:
 4. Assess problem-solving and critical thinking
 5. Evaluate cultural fit and soft skills
 
-Return your response as JSON with this structure:
+IMPORTANT: Return ONLY the JSON object below, with no explanations, markdown formatting, or additional text before or after the JSON.
+
+Your response must be valid JSON that can be parsed directly, with this EXACT structure:
 {{
     "questions": [
         {{

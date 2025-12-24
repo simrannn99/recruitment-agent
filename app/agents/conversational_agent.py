@@ -76,7 +76,9 @@ class ConversationalAgent(BaseAgent):
             
             IMPORTANT: Extract skills and experience even if other details are missing!
             
-            Return JSON with this exact structure:
+            IMPORTANT: Return ONLY the JSON object below, with no explanations, markdown formatting, or additional text before or after the JSON.
+            
+            Your response must be valid JSON that can be parsed directly, with this exact structure:
             {{
                 "intent": "job_search|candidate_analysis|clarification_needed|general_query|conversation_end",
                 "confidence": 0.95,

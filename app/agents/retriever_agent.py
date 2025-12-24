@@ -53,7 +53,9 @@ class RetrieverAgent(BaseAgent):
             ("system", """You are an expert recruiter. Given a job description, extract the key skills 
             and requirements that should be used to search for candidates.
             
-            Return your response as JSON with this structure:
+            IMPORTANT: Return ONLY the JSON object below, with no explanations, markdown formatting, or additional text before or after the JSON.
+            
+            Your response must be valid JSON that can be parsed directly, with this structure:
             {{
                 "primary_skills": ["skill1", "skill2", ...],
                 "secondary_skills": ["skill3", "skill4", ...],
